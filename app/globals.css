@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Modo dia (padrão) */
+:root {
+  color-scheme: light;
+  --color-paper: 247 247 244; /* #F7F7F4 */
+  --color-surface: 255 255 255; /* #FFFFFF */
+  --color-ink: 26 29 35; /* #1A1D23 */
+  --color-muted: 107 114 128; /* #6B7280 */
+  --color-line: 228 227 222; /* #E4E3DE */
+  --color-brand: 43 58 85; /* #2B3A55 */
+  --color-brand-light: 62 80 117; /* #3E5075 */
+  --color-action: 217 164 65; /* #D9A441 */
+  --color-action-hover: 196 144 47; /* #C4902F */
+}
+
+/* Modo noite */
+.dark {
+  color-scheme: dark;
+  --color-paper: 0 21 44; /* #00152C */
+  --color-surface: 7 37 68; /* #072544 */
+  --color-ink: 255 255 255; /* #FFFFFF */
+  --color-muted: 147 173 188; /* #93ADBC */
+  --color-line: 18 56 82; /* #123852 */
+  --color-brand: 44 122 158; /* #2C7A9E */
+  --color-brand-light: 62 147 186; /* #3E93BA */
+  --color-action: 217 164 65; /* #D9A441 -- mesma cor nos dois temas */
+  --color-action-hover: 196 144 47; /* #C4902F */
+}
+
+* {
+  box-sizing: border-box;
+}
+
+:focus-visible {
+  outline: 2px solid #d9a441;
+  outline-offset: 2px;
+}
