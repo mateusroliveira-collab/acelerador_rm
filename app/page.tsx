@@ -3,24 +3,25 @@ import { Header } from "./components/Header";
 
 const ferramentas = [
   {
-    href: "/buscador-xml",
+    href: "#",
     codigo: "01",
+    titulo: "Interpretador de MIT 41",
+    descricao:
+      "interpretação da MIT 41 para facilitar a criação dos tipos de movimento.",
+    disponivel: false,
+  },
+  {
+    href: "/buscador-xml",
+    codigo: "02",
     titulo: "Buscador de XML",
     descricao: "Encontre e higienize templates de tipos de movimento.",
     disponivel: true,
   },
   {
     href: "#",
-    codigo: "02",
+    codigo: "03",
     titulo: "Validador de CNAB",
     descricao: "Valide arquivos CNAB 240, 400 e registros online.",
-    disponivel: false,
-  },
-  {
-    href: "#",
-    codigo: "03",
-    titulo: "Interpretador de MIT 41",
-    descricao: "interpretação da MIT 41 para facilitar a criação dos tipos de movimento.",
     disponivel: false,
   },
 ];
@@ -31,7 +32,7 @@ export default function HomePage() {
       <div className="mx-auto max-w-4xl">
         <Header />
         <h1 className="mt-6 font-display text-4xl font-bold text-ink md:text-5xl">
-          Ferramentas de parametrização
+          Acelerador de Implantação com IA
         </h1>
         <p className="mt-3 max-w-xl text-muted">
           Três ferramentas internas para acelerar compras, estoque e

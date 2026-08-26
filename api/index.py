@@ -10,10 +10,12 @@ de api/_lib/routers/, e são registradas aqui.
 from fastapi import FastAPI
 
 from ._lib.routers.xml import router as xml_router
+from ._lib.routers.cnab import router as cnab_router
 
 app = FastAPI(title="Ferramentas RM")
 
 app.include_router(xml_router)
+app.include_router(cnab_router)
 
 
 @app.get("/api/health")

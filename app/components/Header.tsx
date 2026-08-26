@@ -43,8 +43,8 @@ export function Header() {
         <Image
           src={tema === "dark" ? "/totvs-logo-branca.png" : "/totvs-logo-escura.png"}
           alt="TOTVS"
-          width={94}
-          height={28}
+          width={150}
+          height={65}
           className="shrink-0"
           priority
         />
