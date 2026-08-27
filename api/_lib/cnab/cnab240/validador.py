@@ -14,6 +14,7 @@ from .layout import (
     HEADER_LOTE,
     TRAILER_LOTE,
     TRAILER_ARQUIVO,
+    SEGMENTOS,
     TAMANHO_LINHA,
 )
 
@@ -144,6 +145,31 @@ def validar_cnab240(conteudo: str) -> ResultadoValidacao:
                             f"deveria ter {TAMANHO_LINHA}."
                         ),
                         linha=i,
+                    )
+                )
+                continue
+
+            codigo_segmento = texto_linha[13]  # posição 14
+            layout_segmento = SEGMENTOS.get(codigo_segmento)
+
+            if layout_segmento is not None:
+                erros += _validar_registro(i, texto_linha, layout_segmento)
+            else:
+                # Segmento reconhecido pela FEBRABAN mas ainda não
+                # implementado aqui (ex: C, J, O, N, T, U...), ou código
+                # inválido de verdade -- por enquanto só sinaliza, sem
+                # validar campo a campo.
+                erros.append(
+                    ErroValidacao(
+                        mensagem=(
+                            f'Segmento "{codigo_segmento}" não é validado '
+                            "em detalhe ainda (ou código inválido)."
+                        ),
+                        linha=i,
+                        posicao_inicio=14,
+                        posicao_fim=14,
+                        campo="Código de Segmento do Registro Detalhe",
+                        valor_encontrado=codigo_segmento,
                     )
                 )
         else:
