@@ -19,7 +19,11 @@ router = APIRouter(prefix="/api/xml", tags=["xml"])
 def listar_grupos():
     """Devolve a lista de grupos de movimento disponíveis (pro dropdown do front)."""
     return [
-        {"codigo": codigo, "label": info["label"]}
+        {
+            "codigo": codigo,
+            "label": info["label"],
+            "descricao": info.get("descricao"),
+        }
         for codigo, info in config.GRUPOS.items()
     ]
 

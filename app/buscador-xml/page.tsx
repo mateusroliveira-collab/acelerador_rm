@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Header } from "../components/Header";
 
-type Grupo = { codigo: string; label: string | null };
+type Grupo = { codigo: string; label: string | null; descricao?: string | null };
 
 export default function BuscadorXmlPage() {
   const [grupos, setGrupos] = useState<Grupo[]>([]);
@@ -90,6 +90,7 @@ export default function BuscadorXmlPage() {
             <button
               key={g.codigo}
               onClick={() => setGrupoSelecionado(g.codigo)}
+              title={g.descricao ?? undefined}
               className={`rounded-lg border px-3 py-4 text-left transition ${
                 grupoSelecionado === g.codigo
                   ? "border-brand bg-brand text-white"
@@ -106,7 +107,7 @@ export default function BuscadorXmlPage() {
                     : "text-muted"
                 }`}
               >
-                {g.label ?? "Tipos de movimento"}
+                {g.label ?? "Sem descrição"}
               </span>
             </button>
           ))}
