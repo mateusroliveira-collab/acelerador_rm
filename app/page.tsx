@@ -18,11 +18,11 @@ const ferramentas = [
     disponivel: true,
   },
   {
-    href: "#",
+    href: "/validador-cnab",
     codigo: "03",
     titulo: "Validador de CNAB",
     descricao: "Valide arquivos CNAB 240, 400 e registros online.",
-    disponivel: false,
+    disponivel: true,
   },
 ];
 
@@ -32,7 +32,7 @@ export default function HomePage() {
       <div className="mx-auto max-w-4xl">
         <Header />
         <h1 className="mt-6 font-display text-4xl font-bold text-ink md:text-5xl">
-          Acelerador de Implantação com IA
+          Ferramentas de parametrização
         </h1>
         <p className="mt-3 max-w-xl text-muted">
           Três ferramentas internas para acelerar compras, estoque e
