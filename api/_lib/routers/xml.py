@@ -38,6 +38,9 @@ def sugerir_grupo_por_mit41(corpo: TextoMit41):
         )
     sugestoes = sugerir_grupos(campos)
     return {"campos_extraidos": campos, "sugestoes": sugestoes}
+
+
+@router.get("/grupos")
 def listar_grupos():
     """Devolve a lista de grupos de movimento disponíveis (pro dropdown do front)."""
     return [
