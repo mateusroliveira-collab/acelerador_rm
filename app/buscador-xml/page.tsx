@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Header } from "../components/Header";
 
 type Grupo = { codigo: string; label: string | null; descricao?: string | null };
+type SugestaoGrupo = { grupo: string; pontuacao: number; sinais: string[] };
 
 export default function BuscadorXmlPage() {
   const [grupos, setGrupos] = useState<Grupo[]>([]);
@@ -15,6 +16,10 @@ export default function BuscadorXmlPage() {
   const [carregando, setCarregando] = useState(false);
   const [baixando, setBaixando] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+
+  const [textoMit41, setTextoMit41] = useState("");
+  const [sugestoes, setSugestoes] = useState<SugestaoGrupo[] | null>(null);
+  const [sugerindo, setSugerindo] = useState(false);
 
   useEffect(() => {
     fetch("/api/xml/grupos")
@@ -72,6 +77,30 @@ export default function BuscadorXmlPage() {
     }
   }
 
+  async function sugerirGrupo() {
+    if (!textoMit41.trim()) return;
+    setSugerindo(true);
+    setSugestoes(null);
+    setErro(null);
+    try {
+      const resposta = await fetch("/api/xml/sugerir-grupo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ texto: textoMit41 }),
+      });
+      if (!resposta.ok) throw new Error();
+      const dados = await resposta.json();
+      setSugestoes(dados.sugestoes);
+      if (dados.sugestoes.length > 0) {
+        setGrupoSelecionado(dados.sugestoes[0].grupo);
+      }
+    } catch {
+      setErro("Não foi possível analisar o texto do MIT 41.");
+    } finally {
+      setSugerindo(false);
+    }
+  }
+
   return (
     <main className="min-h-screen px-6 py-12 md:px-12 lg:px-20">
       <div className="mx-auto max-w-4xl">
@@ -83,6 +112,61 @@ export default function BuscadorXmlPage() {
           Selecione o tipo de movimento, encontre o template certo e gere a
           versão higienizada, pronta para parametrização.
         </p>
+
+        {/* Ponte com o Interpretador de MIT 41 -- opcional, sugere o
+            grupo com base nos campos extraídos, sem decidir sozinho */}
+        <div className="mt-8 rounded-lg border border-line bg-surface p-4">
+          <h2 className="font-display text-sm font-bold text-ink">
+            Colar saída do Interpretador de MIT 41 (opcional)
+          </h2>
+          <p className="mt-1 text-xs text-muted">
+            Cola aqui um trecho da resposta do Gem -- a ferramenta sugere
+            o grupo de movimento com base nos campos extraídos. Você
+            confirma antes de usar.
+          </p>
+          <textarea
+            value={textoMit41}
+            onChange={(e) => setTextoMit41(e.target.value)}
+            rows={5}
+            placeholder={"[INICIO_MOVIMENTO]\nPROCESSO_ORIGEM=...\n..."}
+            className="mt-3 w-full rounded-lg border border-line bg-paper px-3 py-2 font-mono text-xs text-ink placeholder:text-muted focus:border-brand"
+          />
+          <button
+            onClick={sugerirGrupo}
+            disabled={!textoMit41.trim() || sugerindo}
+            className="mt-2 rounded-md bg-action px-4 py-2 text-sm font-medium text-white transition hover:bg-action-hover disabled:opacity-50"
+          >
+            {sugerindo ? "Analisando..." : "Sugerir grupo"}
+          </button>
+
+          {sugestoes && sugestoes.length > 0 && (
+            <div className="mt-4 space-y-2">
+              {sugestoes.slice(0, 3).map((s, idx) => (
+                <button
+                  key={s.grupo}
+                  onClick={() => setGrupoSelecionado(s.grupo)}
+                  className={`block w-full rounded-md border px-3 py-2 text-left text-xs transition ${
+                    idx === 0
+                      ? "border-brand bg-brand/10"
+                      : "border-line hover:border-brand"
+                  }`}
+                >
+                  <span className="font-mono font-bold text-ink">
+                    {s.grupo}
+                  </span>
+                  <span className="ml-2 text-muted">
+                    ({s.pontuacao} pontos)
+                  </span>
+                  <ul className="mt-1 list-inside list-disc text-muted">
+                    {s.sinais.map((sinal, i) => (
+                      <li key={i}>{sinal}</li>
+                    ))}
+                  </ul>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* Seletor de grupo -- estilo fichário técnico */}
         <div className="mt-10 grid grid-cols-3 gap-3 sm:grid-cols-6">
