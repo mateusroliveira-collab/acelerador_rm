@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { Header } from "../components/Header";
 
+type SugestaoGrupo = { grupo: string; pontuacao: number; sinais: string[] };
+
 type SubProcesso = {
   numero: string;
   titulo: string;
@@ -11,32 +13,40 @@ type SubProcesso = {
   texto_to_be: string | null;
   gap: string | null;
   campos_que_precisam_de_ia: string[];
+  sugestao_aproximada: SugestaoGrupo[];
 };
 
 export default function PreProcessadorMit41Page() {
-  const [texto, setTexto] = useState("");
+  const [arquivo, setArquivo] = useState<File | null>(null);
   const [subprocessos, setSubprocessos] = useState<SubProcesso[] | null>(
     null
   );
+  const [linhaAberta, setLinhaAberta] = useState<number | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
   async function processar() {
-    if (!texto.trim()) return;
+    if (!arquivo) return;
     setCarregando(true);
     setErro(null);
     setSubprocessos(null);
     try {
+      const formData = new FormData();
+      formData.append("arquivo", arquivo);
       const resposta = await fetch("/api/xml/pre-processar-mit41", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ texto }),
+        body: formData,
       });
-      if (!resposta.ok) throw new Error();
+      if (!resposta.ok) {
+        const dados = await resposta.json().catch(() => null);
+        throw new Error(dados?.detail || "Erro ao processar o arquivo.");
+      }
       const dados = await resposta.json();
       setSubprocessos(dados.subprocessos);
-    } catch {
-      setErro("Não foi possível processar o documento.");
+    } catch (e) {
+      setErro(
+        e instanceof Error ? e.message : "Não foi possível processar o arquivo."
+      );
     } finally {
       setCarregando(false);
     }
@@ -44,31 +54,38 @@ export default function PreProcessadorMit41Page() {
 
   return (
     <main className="min-h-screen px-6 py-12 md:px-12 lg:px-20">
-      <div className="mx-auto max-w-4xl">
+      <div className="mx-auto max-w-5xl">
         <Header />
         <h1 className="mt-6 font-display text-4xl font-bold text-ink md:text-5xl">
           Pré-processador de MIT 41
         </h1>
         <p className="mt-3 max-w-2xl text-muted">
-          Organiza o documento MIT 41 <strong>bruto</strong> (colado do
-          Word/PDF, antes de qualquer IA) em uma lista de subprocessos --
-          via regra pura, sem inteligência artificial. Mostra exatamente
-          até onde isso resolve sozinho, e onde a interpretação de
-          negócio (efeito em estoque, financeiro, fiscal) precisaria de
-          um passo a mais.
+          Sobe o PDF <strong>bruto</strong> do MIT 41 (antes de qualquer
+          IA) e organiza os subprocessos numa tabela -- via regra pura.
+          Cada linha já vem com uma sugestão aproximada de grupo de XML,
+          e mostra onde a interpretação de negócio de verdade precisaria
+          de um passo a mais.
         </p>
 
         <div className="mt-8">
-          <textarea
-            value={texto}
-            onChange={(e) => setTexto(e.target.value)}
-            rows={10}
-            placeholder="Cole aqui o texto bruto do MIT 41 -- pode incluir a tabela-índice (ex: '4.1.1.1 Cadastro de Produtos Processos relacionados...') e/ou o detalhamento de cada subprocesso (Processo Relacionado, AS IS, TO BE, GAP)."
-            className="w-full rounded-lg border border-line bg-surface px-4 py-3 font-mono text-xs text-ink placeholder:text-muted focus:border-brand"
-          />
+          <label className="flex cursor-pointer flex-col items-start gap-2 rounded-lg border border-dashed border-line bg-surface px-4 py-6 hover:border-brand">
+            <span className="text-sm text-muted">
+              {arquivo ? arquivo.name : "Clique para escolher o PDF do MIT 41"}
+            </span>
+            <input
+              type="file"
+              accept=".pdf"
+              className="hidden"
+              onChange={(e) => {
+                setArquivo(e.target.files?.[0] ?? null);
+                setSubprocessos(null);
+                setErro(null);
+              }}
+            />
+          </label>
           <button
             onClick={processar}
-            disabled={!texto.trim() || carregando}
+            disabled={!arquivo || carregando}
             className="mt-3 rounded-md bg-action px-4 py-2 text-sm font-medium text-white transition hover:bg-action-hover disabled:opacity-50"
           >
             {carregando ? "Processando..." : "Processar"}
@@ -82,83 +99,139 @@ export default function PreProcessadorMit41Page() {
         )}
 
         {subprocessos && subprocessos.length > 0 && (
-          <div className="mt-8 space-y-4">
-            <p className="text-sm text-muted">
+          <div className="mt-8">
+            <p className="mb-3 text-sm text-muted">
               {subprocessos.length} subprocesso
-              {subprocessos.length === 1 ? "" : "s"} identificado
-              {subprocessos.length === 1 ? "" : "s"} -- lista organizada a
-              partir da tabela-índice do documento.
+              {subprocessos.length === 1 ? "" : "s"} encontrado
+              {subprocessos.length === 1 ? "" : "s"} -- clique numa linha
+              pra ver o detalhamento (AS IS / TO BE).
             </p>
 
-            {subprocessos.map((sp, idx) => (
-              <div
-                key={idx}
-                className="rounded-lg border border-line bg-surface p-4"
-              >
-                <div className="flex items-baseline gap-3">
-                  <span className="font-mono text-sm font-bold text-brand-light">
-                    {sp.numero}
-                  </span>
-                  <span className="font-display text-lg font-bold text-ink">
-                    {sp.titulo}
-                  </span>
-                </div>
-
-                {!sp.processo_relacionado && !sp.texto_to_be && (
-                  <p className="mt-2 text-xs italic text-muted">
-                    Só o nome veio da tabela-índice -- cole também o
-                    detalhamento desse subprocesso (a seção com "Processo
-                    Relacionado", "AS IS", "TO BE") pra ver o resto.
-                  </p>
-                )}
-
-                {sp.processo_relacionado && (
-                  <p className="mt-2 text-xs text-muted">
-                    <span className="font-medium text-ink">
-                      Processo Relacionado:
-                    </span>{" "}
-                    {sp.processo_relacionado}
-                  </p>
-                )}
-
-                {sp.texto_as_is && (
-                  <div className="mt-3">
-                    <p className="text-xs font-bold text-ink">AS IS</p>
-                    <p className="mt-1 text-sm text-muted">
-                      {sp.texto_as_is}
-                    </p>
-                  </div>
-                )}
-
-                {sp.texto_to_be && (
-                  <div className="mt-3">
-                    <p className="text-xs font-bold text-ink">TO BE</p>
-                    <p className="mt-1 text-sm text-muted">
-                      {sp.texto_to_be}
-                    </p>
-                  </div>
-                )}
-
-                {sp.gap && (
-                  <div className="mt-3">
-                    <p className="text-xs font-bold text-ink">GAP</p>
-                    <p className="mt-1 text-sm text-muted">{sp.gap}</p>
-                  </div>
-                )}
-
-                {sp.campos_que_precisam_de_ia.length > 0 && (
-                  <div className="mt-4 rounded-md border border-dashed border-action/50 bg-action/10 px-3 py-2">
-                    <p className="text-xs font-bold text-action">
-                      Precisa de interpretação (IA) pra virar campo
-                      estruturado:
-                    </p>
-                    <p className="mt-1 font-mono text-xs text-muted">
-                      {sp.campos_que_precisam_de_ia.join(", ")}
-                    </p>
-                  </div>
-                )}
-              </div>
-            ))}
+            <div className="overflow-x-auto rounded-lg border border-line">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-line bg-surface">
+                    <th className="px-3 py-2 font-mono text-xs text-muted">
+                      Nº
+                    </th>
+                    <th className="px-3 py-2 text-xs font-bold text-ink">
+                      Movimento
+                    </th>
+                    <th className="px-3 py-2 text-xs font-bold text-ink">
+                      Sugestão de grupo
+                    </th>
+                    <th className="px-3 py-2 text-xs font-bold text-ink">
+                      GAP
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {subprocessos.map((sp, idx) => {
+                    const topSugestao = sp.sugestao_aproximada[0];
+                    const aberta = linhaAberta === idx;
+                    return (
+                      <>
+                        <tr
+                          key={idx}
+                          onClick={() =>
+                            setLinhaAberta(aberta ? null : idx)
+                          }
+                          className="cursor-pointer border-b border-line bg-paper transition hover:bg-surface"
+                        >
+                          <td className="px-3 py-2 font-mono text-xs text-muted">
+                            {sp.numero}
+                          </td>
+                          <td className="px-3 py-2 text-ink">{sp.titulo}</td>
+                          <td className="px-3 py-2">
+                            {topSugestao ? (
+                              <span className="font-mono text-xs font-bold text-brand-light">
+                                {topSugestao.grupo}
+                              </span>
+                            ) : (
+                              <span className="text-xs italic text-muted">
+                                sem sinal
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-xs text-muted">
+                            {sp.gap ? "sim" : "--"}
+                          </td>
+                        </tr>
+                        {aberta && (
+                          <tr className="border-b border-line bg-surface">
+                            <td colSpan={4} className="px-3 py-3">
+                              {sp.processo_relacionado && (
+                                <p className="text-xs text-muted">
+                                  <span className="font-medium text-ink">
+                                    Processo Relacionado:
+                                  </span>{" "}
+                                  {sp.processo_relacionado}
+                                </p>
+                              )}
+                              {sp.texto_as_is && (
+                                <p className="mt-2 text-xs text-muted">
+                                  <span className="font-bold text-ink">
+                                    AS IS:
+                                  </span>{" "}
+                                  {sp.texto_as_is}
+                                </p>
+                              )}
+                              {sp.texto_to_be && (
+                                <p className="mt-2 text-xs text-muted">
+                                  <span className="font-bold text-ink">
+                                    TO BE:
+                                  </span>{" "}
+                                  {sp.texto_to_be}
+                                </p>
+                              )}
+                              {!sp.processo_relacionado && !sp.texto_to_be && (
+                                <p className="text-xs italic text-muted">
+                                  Só o nome veio da tabela-índice -- o PDF
+                                  não tem (ou não trouxe) o detalhamento
+                                  desse subprocesso.
+                                </p>
+                              )}
+                              {sp.campos_que_precisam_de_ia.length > 0 && (
+                                <div className="mt-3 rounded-md border border-dashed border-action/50 bg-action/10 px-3 py-2">
+                                  <p className="text-xs font-bold text-action">
+                                    Precisa de interpretação (IA) pra virar
+                                    campo estruturado:
+                                  </p>
+                                  <p className="mt-1 font-mono text-xs text-muted">
+                                    {sp.campos_que_precisam_de_ia.join(", ")}
+                                  </p>
+                                </div>
+                              )}
+                              {sp.sugestao_aproximada.length > 0 && (
+                                <div className="mt-3">
+                                  <p className="text-xs font-bold text-ink">
+                                    Sinais da sugestão (aproximada, sem
+                                    interpretação completa):
+                                  </p>
+                                  <ul className="mt-1 list-inside list-disc text-xs text-muted">
+                                    {sp.sugestao_aproximada
+                                      .slice(0, 2)
+                                      .map((s) => (
+                                        <li key={s.grupo}>
+                                          <span className="font-mono font-bold text-ink">
+                                            {s.grupo}
+                                          </span>{" "}
+                                          ({s.pontuacao} pts) --{" "}
+                                          {s.sinais.join("; ")}
+                                        </li>
+                                      ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>

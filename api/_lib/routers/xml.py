@@ -7,14 +7,14 @@ lógica pesada (limpeza de XML) mora em xml_cleaner.py; aqui só
 orquestra: recebe a requisição, chama a lógica, devolve a resposta.
 """
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Response, UploadFile, File
 from pydantic import BaseModel
 
 from .. import config
 from ..xml_cleaner import limpar_xml
 from ..mit41.parser import parsear_mit41, separar_movimentos
 from ..mit41.matcher import sugerir_grupos
-from ..mit41.pre_processador import pre_processar_documento
+from ..mit41.pre_processador import pre_processar_documento, montar_campos_para_matcher
 
 router = APIRouter(prefix="/api/xml", tags=["xml"])
 
@@ -56,24 +56,40 @@ def sugerir_grupo_por_mit41(corpo: TextoMit41):
     return {"movimentos": resultados}
 
 
-class TextoBruto(BaseModel):
-    texto: str
-
-
 @router.post("/pre-processar-mit41")
-def pre_processar_mit41_bruto(corpo: TextoBruto):
+async def pre_processar_mit41_bruto(arquivo: UploadFile = File(...)):
     """
-    Recebe o texto BRUTO de um documento MIT 41 (colado do Word/PDF, sem
-    nenhuma interpretação de IA ainda) e separa a estrutura que dá pra
+    Recebe o PDF BRUTO de um documento MIT 41 (sem nenhuma interpretação
+    de IA ainda), extrai o texto, e separa a estrutura que dá pra
     extrair com confiabilidade real via regra pura: número e título do
     subprocesso, caminho "Processo Relacionado", texto AS IS, texto TO BE
     e a seção GAP.
 
-    NÃO classifica efeito de estoque/financeiro/fiscal -- essa parte
-    exige compreensão de linguagem (o texto do TO BE é livre), e por
-    isso fica marcada explicitamente como pendente de interpretação.
+    Também devolve uma sugestão de grupo APROXIMADA por movimento (usando
+    só nome + processo relacionado + palavras-chave fiscais no TO BE) --
+    é mais fraca que a Ponte MIT 41 completa (que usa a saída já
+    interpretada pelo Gem), e isso fica marcado explicitamente.
     """
-    subprocessos = pre_processar_documento(corpo.texto)
+    import pdfplumber
+    import io
+
+    conteudo_bytes = await arquivo.read()
+    try:
+        with pdfplumber.open(io.BytesIO(conteudo_bytes)) as pdf:
+            texto = "\n".join(pagina.extract_text() or "" for pagina in pdf.pages)
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="Não consegui ler esse arquivo como PDF. Confirma se o arquivo não está corrompido.",
+        )
+
+    if not texto.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="O PDF não retornou texto (pode ser um PDF escaneado/imagem, sem texto selecionável).",
+        )
+
+    subprocessos = pre_processar_documento(texto)
     return {
         "subprocessos": [
             {
@@ -87,6 +103,7 @@ def pre_processar_mit41_bruto(corpo: TextoBruto):
                     "EFEITO_ESTOQUE", "EFEITO_FINANCEIRO", "DOCUMENTO_FISCAL",
                     "CONTABILIZACAO", "REGRAS",
                 ] if sp.texto_to_be else [],
+                "sugestao_aproximada": sugerir_grupos(montar_campos_para_matcher(sp)),
             }
             for sp in subprocessos
         ]

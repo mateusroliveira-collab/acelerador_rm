@@ -168,3 +168,39 @@ def pre_processar_documento(texto: str) -> list[SubProcesso]:
                 SubProcesso(numero=item.numero, titulo=item.nome)
             )
     return resultado
+
+# Palavras que, aparecendo no texto TO BE, são um indício (fraco, mas
+# real) de efeito fiscal -- usado só pra alimentar o matcher com um
+# "campo fiscal" aproximado, já que a extração bruta não separa isso em
+# campo próprio (isso é exatamente o pedaço que precisaria de IA de
+# verdade pra virar DOCUMENTO_FISCAL=/TRIBUTACAO= com confiança).
+_PALAVRAS_FISCAL_APROXIMADAS = [
+    "nota fiscal", "icms", "ipi", "iss", "tributação", "tributacao",
+    "imposto", "nf-e", "danfe",
+]
+
+
+def montar_campos_para_matcher(sp: SubProcesso) -> dict[str, str]:
+    """
+    Constrói um dicionário "parecido" com o que o interpretador de IA
+    devolveria, só que a partir dos campos brutos (sem interpretação de
+    negócio de verdade). É uma ponte deliberadamente mais fraca -- serve
+    pra dar uma sugestão inicial na tabela, mas não substitui a Ponte
+    MIT 41 completa (que usa a saída já interpretada pelo Gem).
+    """
+    campos: dict[str, str] = {"NOME_MOVIMENTO": sp.titulo}
+    if sp.processo_relacionado:
+        campos["PROCESSO_ORIGEM"] = sp.processo_relacionado
+
+    texto_to_be = (sp.texto_to_be or "").lower()
+    for palavra in _PALAVRAS_FISCAL_APROXIMADAS:
+        if palavra in texto_to_be:
+            # Marca um sinal fiscal aproximado -- valor é só um trecho
+            # pra transparência, não uma classificação de verdade.
+            trecho_inicio = texto_to_be.find(palavra)
+            campos["TRIBUTACAO"] = (sp.texto_to_be or "")[
+                trecho_inicio : trecho_inicio + 60
+            ]
+            break
+
+    return campos
