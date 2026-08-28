@@ -5,6 +5,10 @@ import { Header } from "../components/Header";
 
 type Grupo = { codigo: string; label: string | null; descricao?: string | null };
 type SugestaoGrupo = { grupo: string; pontuacao: number; sinais: string[] };
+type MovimentoAnalisado = {
+  nome_movimento: string | null;
+  sugestoes: SugestaoGrupo[];
+};
 
 export default function BuscadorXmlPage() {
   const [grupos, setGrupos] = useState<Grupo[]>([]);
@@ -18,7 +22,9 @@ export default function BuscadorXmlPage() {
   const [erro, setErro] = useState<string | null>(null);
 
   const [textoMit41, setTextoMit41] = useState("");
-  const [sugestoes, setSugestoes] = useState<SugestaoGrupo[] | null>(null);
+  const [movimentos, setMovimentos] = useState<MovimentoAnalisado[] | null>(
+    null
+  );
   const [sugerindo, setSugerindo] = useState(false);
 
   useEffect(() => {
@@ -80,7 +86,7 @@ export default function BuscadorXmlPage() {
   async function sugerirGrupo() {
     if (!textoMit41.trim()) return;
     setSugerindo(true);
-    setSugestoes(null);
+    setMovimentos(null);
     setErro(null);
     try {
       const resposta = await fetch("/api/xml/sugerir-grupo", {
@@ -90,9 +96,15 @@ export default function BuscadorXmlPage() {
       });
       if (!resposta.ok) throw new Error();
       const dados = await resposta.json();
-      setSugestoes(dados.sugestoes);
-      if (dados.sugestoes.length > 0) {
-        setGrupoSelecionado(dados.sugestoes[0].grupo);
+      setMovimentos(dados.movimentos);
+      // Se colou só 1 movimento e ele tem uma sugestão clara, já
+      // seleciona sozinho -- com vários movimentos, deixa o analista
+      // escolher qual quer buscar agora.
+      if (
+        dados.movimentos.length === 1 &&
+        dados.movimentos[0].sugestoes.length > 0
+      ) {
+        setGrupoSelecionado(dados.movimentos[0].sugestoes[0].grupo);
       }
     } catch {
       setErro("Não foi possível analisar o texto do MIT 41.");
@@ -139,30 +151,42 @@ export default function BuscadorXmlPage() {
             {sugerindo ? "Analisando..." : "Sugerir grupo"}
           </button>
 
-          {sugestoes && sugestoes.length > 0 && (
+          {movimentos && movimentos.length > 0 && (
             <div className="mt-4 space-y-2">
-              {sugestoes.slice(0, 3).map((s, idx) => (
-                <button
-                  key={s.grupo}
-                  onClick={() => setGrupoSelecionado(s.grupo)}
-                  className={`block w-full rounded-md border px-3 py-2 text-left text-xs transition ${
-                    idx === 0
-                      ? "border-brand bg-brand/10"
-                      : "border-line hover:border-brand"
-                  }`}
+              <p className="text-xs text-muted">
+                {movimentos.length === 1
+                  ? "1 movimento encontrado:"
+                  : `${movimentos.length} movimentos encontrados -- clique no grupo certo pra cada um:`}
+              </p>
+              {movimentos.map((mov, idxMov) => (
+                <div
+                  key={idxMov}
+                  className="rounded-md border border-line px-3 py-2"
                 >
-                  <span className="font-mono font-bold text-ink">
-                    {s.grupo}
-                  </span>
-                  <span className="ml-2 text-muted">
-                    ({s.pontuacao} pontos)
-                  </span>
-                  <ul className="mt-1 list-inside list-disc text-muted">
-                    {s.sinais.map((sinal, i) => (
-                      <li key={i}>{sinal}</li>
-                    ))}
-                  </ul>
-                </button>
+                  <p className="text-xs font-bold text-ink">
+                    {mov.nome_movimento ?? `Movimento ${idxMov + 1}`}
+                  </p>
+                  {mov.sugestoes.length === 0 && (
+                    <p className="mt-1 text-xs italic text-muted">
+                      Sem sinal suficiente pra sugerir um grupo -- escolha
+                      manualmente abaixo.
+                    </p>
+                  )}
+                  {mov.sugestoes.slice(0, 2).map((s) => (
+                    <button
+                      key={s.grupo}
+                      onClick={() => setGrupoSelecionado(s.grupo)}
+                      className="mt-1 block w-full rounded border border-line px-2 py-1 text-left text-xs transition hover:border-brand"
+                    >
+                      <span className="font-mono font-bold text-ink">
+                        {s.grupo}
+                      </span>
+                      <span className="ml-2 text-muted">
+                        ({s.pontuacao} pts) -- {s.sinais.join("; ")}
+                      </span>
+                    </button>
+                  ))}
+                </div>
               ))}
             </div>
           )}

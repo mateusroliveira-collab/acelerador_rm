@@ -12,8 +12,9 @@ from pydantic import BaseModel
 
 from .. import config
 from ..xml_cleaner import limpar_xml
-from ..mit41.parser import parsear_mit41
+from ..mit41.parser import parsear_mit41, separar_movimentos
 from ..mit41.matcher import sugerir_grupos
+from ..mit41.pre_processador import pre_processar_documento
 
 router = APIRouter(prefix="/api/xml", tags=["xml"])
 
@@ -25,19 +26,71 @@ class TextoMit41(BaseModel):
 @router.post("/sugerir-grupo")
 def sugerir_grupo_por_mit41(corpo: TextoMit41):
     """
-    Recebe um trecho colado da saída do interpretador de MIT 41, extrai
-    os campos estruturados, e devolve sugestões de grupo de movimento --
-    cada uma com os sinais que levaram àquela pontuação (não é caixa
-    preta, o analista confirma antes de usar).
+    Recebe um trecho colado da saída do interpretador de MIT 41 -- pode
+    ser UM movimento ou o documento INTEIRO com vários -- separa cada
+    [INICIO_MOVIMENTO]...[FIM_MOVIMENTO], extrai os campos de cada um, e
+    devolve sugestões de grupo por movimento. Cada sugestão mostra os
+    sinais que levaram àquela pontuação (não é caixa preta), e um
+    movimento sem sinal suficiente vem com lista de sugestões vazia --
+    nunca inventa uma resposta fraca.
     """
-    campos = parsear_mit41(corpo.texto)
-    if not campos:
+    blocos = separar_movimentos(corpo.texto)
+    resultados = []
+    for bloco in blocos:
+        campos = parsear_mit41(bloco)
+        if not campos:
+            continue
+        resultados.append(
+            {
+                "nome_movimento": campos.get("NOME_MOVIMENTO"),
+                "campos_extraidos": campos,
+                "sugestoes": sugerir_grupos(campos),
+            }
+        )
+
+    if not resultados:
         raise HTTPException(
             status_code=400,
             detail="Não consegui reconhecer nenhum campo nesse texto. Confirma se é a saída do interpretador de MIT 41.",
         )
-    sugestoes = sugerir_grupos(campos)
-    return {"campos_extraidos": campos, "sugestoes": sugestoes}
+    return {"movimentos": resultados}
+
+
+class TextoBruto(BaseModel):
+    texto: str
+
+
+@router.post("/pre-processar-mit41")
+def pre_processar_mit41_bruto(corpo: TextoBruto):
+    """
+    Recebe o texto BRUTO de um documento MIT 41 (colado do Word/PDF, sem
+    nenhuma interpretação de IA ainda) e separa a estrutura que dá pra
+    extrair com confiabilidade real via regra pura: número e título do
+    subprocesso, caminho "Processo Relacionado", texto AS IS, texto TO BE
+    e a seção GAP.
+
+    NÃO classifica efeito de estoque/financeiro/fiscal -- essa parte
+    exige compreensão de linguagem (o texto do TO BE é livre), e por
+    isso fica marcada explicitamente como pendente de interpretação.
+    """
+    subprocessos = pre_processar_documento(corpo.texto)
+    return {
+        "subprocessos": [
+            {
+                "numero": sp.numero,
+                "titulo": sp.titulo,
+                "processo_relacionado": sp.processo_relacionado,
+                "texto_as_is": sp.texto_as_is,
+                "texto_to_be": sp.texto_to_be,
+                "gap": sp.gap,
+                "campos_que_precisam_de_ia": [
+                    "EFEITO_ESTOQUE", "EFEITO_FINANCEIRO", "DOCUMENTO_FISCAL",
+                    "CONTABILIZACAO", "REGRAS",
+                ] if sp.texto_to_be else [],
+            }
+            for sp in subprocessos
+        ]
+    }
 
 
 @router.get("/grupos")

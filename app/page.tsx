@@ -3,12 +3,12 @@ import { Header } from "./components/Header";
 
 const ferramentas = [
   {
-    href: "#",
+    href: "/pre-processador-mit41",
     codigo: "01",
-    titulo: "Interpretador de MIT 41",
+    titulo: "Pré-processador de MIT 41",
     descricao:
-      "interpretação da MIT 41 para facilitar a criação dos tipos de movimento.",
-    disponivel: false,
+      "Organiza o MIT 41 bruto em subprocessos via regra pura -- mostra onde a IA entraria.",
+    disponivel: true,
   },
   {
     href: "/buscador-xml",
