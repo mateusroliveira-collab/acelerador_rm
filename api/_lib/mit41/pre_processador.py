@@ -69,7 +69,13 @@ _PADRAO_AS_IS = re.compile(
 _PADRAO_TO_BE = re.compile(
     r"TO BE:?\s*(.*?)(?=GAP|\Z)", re.DOTALL | re.IGNORECASE
 )
-_PADRAO_GAP = re.compile(r"\bGAP\b\s*(.*?)\Z", re.DOTALL)
+# Fronteira extra: para no próximo título de seção de nível 1 (ex: "5.
+# Processo Relacionado", "7. Aprovação"), não só em \Z -- sem isso, o GAP
+# do ÚLTIMO subprocesso de cada seção "vaza" e engole a tabela-índice ou
+# a seção seguinte inteira.
+_PADRAO_GAP = re.compile(
+    r"\bGAP\b\s*(.*?)(?=\n\s*\d+\.\s+[A-ZÀ-Ú]|\Z)", re.DOTALL
+)
 
 # Âncora confiável pra tabela-índice: toda linha da "Descrição do
 # Sub-Processo" tem "Processos relacionados..." na coluna Descrição --
@@ -79,6 +85,11 @@ _PADRAO_GAP = re.compile(r"\bGAP\b\s*(.*?)\Z", re.DOTALL)
 _PADRAO_ITEM_INDICE = re.compile(
     r"(\d+(?:\.\d+){2,4})\s+(.*?)\s+Processos?\s+[Rr]elacionad[oa]s?\s+(?:a|ao|à)?\s*",
 )
+
+# Fronteira de índice: precisa bater exatamente com "N.N.N" (3 a 5
+# níveis) -- protege contra outras tabelas do documento (CNPJs de
+# filiais, assinatura de aprovação) que não são o índice de subprocessos.
+_PADRAO_NUMERO = re.compile(r"^\d+(?:\.\d+){2,4}$")
 
 
 def _limpar_ruido(texto: str) -> str:
@@ -111,6 +122,49 @@ def extrair_indice(texto: str) -> list[ItemIndice]:
         nome_limpo = re.sub(r"\s+", " ", nome_limpo)
         if nome_limpo:
             itens.append(ItemIndice(numero=numero, nome=nome_limpo))
+    return itens
+
+
+def eh_tabela_indice(tabela: list) -> bool:
+    """
+    Identifica se uma tabela extraída pelo pdfplumber é uma das tabelas-
+    índice "Descrição do Sub-Processo" -- usa o cabeçalho Item/Nome como
+    âncora, estável mesmo quando o layout de colunas varia.
+    """
+    if not tabela or not tabela[0] or len(tabela[0]) < 2:
+        return False
+    cab = [str(c or "").strip().lower() for c in tabela[0][:2]]
+    return cab == ["item", "nome"]
+
+
+def extrair_indice_de_tabelas(tabelas: list) -> list[ItemIndice]:
+    """
+    Extrai a lista de subprocessos a partir das tabelas de VERDADE que o
+    pdfplumber reconstrói via geometria do PDF (page.extract_tables()) --
+    não do texto linear (extract_text()).
+
+    Substitui extrair_indice(texto) como caminho principal quando há um
+    PDF de verdade disponível: documento real mostrou que o pdfplumber
+    embaralha a ordem de leitura de forma inconsistente sempre que a
+    célula "Descrição" quebra em duas linhas (o texto "Processos
+    relacionados..." pode aparecer ANTES do número/nome da linha, e o
+    próprio "Nome" pode vir partido em duas linhas) -- regra sobre esse
+    texto corrido não é confiável. A extração de tabela usa a posição
+    real dos elementos no PDF, então não sofre desse problema.
+    """
+    itens = []
+    for tabela in tabelas:
+        if not eh_tabela_indice(tabela):
+            continue
+        for linha in tabela[1:]:
+            if not linha or not linha[0]:
+                continue
+            numero = str(linha[0]).strip()
+            if not _PADRAO_NUMERO.match(numero):
+                continue  # linha de continuação/cabeçalho (P- Padrão, etc.)
+            nome = re.sub(r"\s+", " ", str(linha[1] or "")).strip()
+            if nome:
+                itens.append(ItemIndice(numero=numero, nome=nome))
     return itens
 
 
@@ -150,19 +204,26 @@ def processar_subprocesso(bloco: str) -> SubProcesso:
     )
 
 
-def pre_processar_documento(texto: str) -> list[SubProcesso]:
+def pre_processar_documento(
+    texto: str,
+    indice_pre_extraido: list[ItemIndice] | None = None,
+) -> list[SubProcesso]:
     """
-    Ponto de entrada principal. Primeiro lê a tabela-índice pra saber
-    exatamente quais subprocessos existem e em que ordem (lista
-    organizada e confiável) -- depois busca o detalhamento de cada um
-    mais adiante no texto, casando pelo número.
+    Ponto de entrada principal. Se indice_pre_extraido for passado (a
+    rota de upload de PDF sempre passa, via extrair_indice_de_tabelas --
+    fonte confiável, usa geometria real do PDF), usa ele. Senão, cai no
+    extrair_indice(texto) via regex sobre texto linear -- mantido só por
+    compatibilidade com colagem de texto direto (sem PDF), onde não tem
+    tabela geométrica disponível pra extrair.
 
-    Se não achar tabela-índice nenhuma (documento colado só a partir do
-    detalhamento, sem a tabela), cai no comportamento antigo: separa
-    direto pelos cabeçalhos de detalhamento.
+    Depois de saber o índice (por qualquer uma das duas fontes), busca o
+    detalhamento de cada subprocesso mais adiante no texto, casando pelo
+    número.
     """
     texto = _limpar_ruido(texto)
-    indice = extrair_indice(texto)
+    indice = (
+        indice_pre_extraido if indice_pre_extraido is not None else extrair_indice(texto)
+    )
 
     if not indice:
         blocos = separar_subprocessos_brutos(texto)

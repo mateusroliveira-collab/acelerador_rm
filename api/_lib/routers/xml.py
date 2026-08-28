@@ -18,6 +18,7 @@ from ..mit41.pre_processador import (
     pre_processar_documento,
     montar_campos_para_matcher,
     gerar_texto_para_ponte,
+    extrair_indice_de_tabelas,
 )
 
 router = APIRouter(prefix="/api/xml", tags=["xml"])
@@ -81,6 +82,9 @@ async def pre_processar_mit41_bruto(arquivo: UploadFile = File(...)):
     try:
         with pdfplumber.open(io.BytesIO(conteudo_bytes)) as pdf:
             texto = "\n".join(pagina.extract_text() or "" for pagina in pdf.pages)
+            tabelas = []
+            for pagina in pdf.pages:
+                tabelas.extend(pagina.extract_tables())
     except Exception:
         raise HTTPException(
             status_code=400,
@@ -93,7 +97,11 @@ async def pre_processar_mit41_bruto(arquivo: UploadFile = File(...)):
             detail="O PDF não retornou texto (pode ser um PDF escaneado/imagem, sem texto selecionável).",
         )
 
-    subprocessos = pre_processar_documento(texto)
+    # Índice via geometria da tabela (confiável) em vez de regex sobre
+    # texto linear (que embaralha quando célula de descrição quebra em
+    # várias linhas -- testado e confirmado contra documento real).
+    indice = extrair_indice_de_tabelas(tabelas)
+    subprocessos = pre_processar_documento(texto, indice_pre_extraido=indice)
     return {
         "texto_para_ponte": gerar_texto_para_ponte(subprocessos),
         "subprocessos": [
