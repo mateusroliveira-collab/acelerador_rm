@@ -21,6 +21,8 @@ export default function PreProcessadorMit41Page() {
   const [subprocessos, setSubprocessos] = useState<SubProcesso[] | null>(
     null
   );
+  const [textoParaPonte, setTextoParaPonte] = useState<string | null>(null);
+  const [copiado, setCopiado] = useState(false);
   const [linhaAberta, setLinhaAberta] = useState<number | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -43,6 +45,7 @@ export default function PreProcessadorMit41Page() {
       }
       const dados = await resposta.json();
       setSubprocessos(dados.subprocessos);
+      setTextoParaPonte(dados.texto_para_ponte);
     } catch (e) {
       setErro(
         e instanceof Error ? e.message : "Não foi possível processar o arquivo."
@@ -100,6 +103,32 @@ export default function PreProcessadorMit41Page() {
 
         {subprocessos && subprocessos.length > 0 && (
           <div className="mt-8">
+            <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-line bg-surface p-4">
+              <div className="flex-1">
+                <p className="text-sm font-bold text-ink">
+                  Continuar no Buscador de XML
+                </p>
+                <p className="mt-1 text-xs text-muted">
+                  Copia esse texto e cola na caixa "Colar saída do
+                  Interpretador de MIT 41" do Buscador de XML -- já vem
+                  no formato que ela reconhece (não é a tabela visual,
+                  que não daria certo colar direto).
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  if (textoParaPonte) {
+                    navigator.clipboard.writeText(textoParaPonte);
+                    setCopiado(true);
+                    setTimeout(() => setCopiado(false), 2000);
+                  }
+                }}
+                className="shrink-0 rounded-md bg-action px-4 py-2 text-sm font-medium text-white transition hover:bg-action-hover"
+              >
+                {copiado ? "Copiado!" : "Copiar pra ponte"}
+              </button>
+            </div>
+
             <p className="mb-3 text-sm text-muted">
               {subprocessos.length} subprocesso
               {subprocessos.length === 1 ? "" : "s"} encontrado

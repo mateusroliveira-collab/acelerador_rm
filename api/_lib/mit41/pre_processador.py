@@ -42,10 +42,21 @@ class SubProcesso:
     texto_bruto_completo: str = ""
 
 
-# Cabeçalho de subprocesso: "4.1.1.2" ou "4.1.1.2." seguido do título até
-# a próxima quebra de linha/ponto forte.
+# Cabeçalho/rodapé que o PDF real injeta NO MEIO do texto quando extrai
+# (ex: "7 MIT041 – ESPECIFICAÇÃO DE PROCESSOS" aparecendo entre duas
+# frases por causa de quebra de página) -- removido antes de qualquer
+# outra extração, senão quebra os regex de item/seção no meio.
+_PADRAO_RUIDO_PAGINA = re.compile(
+    r"\d{1,3}\s+MIT\s?0?41\s*[–\-]\s*ESPECIFICAÇÃO DE PROCESSOS",
+    re.IGNORECASE,
+)
+
+# Cabeçalho de subprocesso: número com 3 a 5 níveis (ex: "4.1.1.2",
+# "5.1.1", "4.1.1.1.1") seguido do título até a próxima quebra/ponto forte.
+# Antes só aceitava exatamente 4 níveis -- documento real tem seções
+# diferentes (Compras, Estoque, Contratos) que podem numerar diferente.
 _PADRAO_CABECALHO = re.compile(
-    r"(\d+\.\d+\.\d+\.\d+)\.?\s+([A-ZÀ-Ú][^\n]{2,80}?)(?=\s+Processo Relacionado)",
+    r"(\d+(?:\.\d+){2,4})\.?\s+([A-ZÀ-Ú][^\n]{2,80}?)(?=\s+Processo Relacionado)",
 )
 
 _PADRAO_PROCESSO_RELACIONADO = re.compile(
@@ -63,10 +74,16 @@ _PADRAO_GAP = re.compile(r"\bGAP\b\s*(.*?)\Z", re.DOTALL)
 # Âncora confiável pra tabela-índice: toda linha da "Descrição do
 # Sub-Processo" tem "Processos relacionados..." na coluna Descrição --
 # isso não muda mesmo quando a extração do PDF embaralha a ordem das
-# colunas Opção/Escopo (testado contra documento real).
+# colunas Opção/Escopo (testado contra documento real). Numeração também
+# flexível aqui (3 a 5 níveis).
 _PADRAO_ITEM_INDICE = re.compile(
-    r"(\d+\.\d+\.\d+\.\d+)\s+(.*?)\s+Processos?\s+[Rr]elacionad[oa]s?\s+(?:a|ao|à)?\s*",
+    r"(\d+(?:\.\d+){2,4})\s+(.*?)\s+Processos?\s+[Rr]elacionad[oa]s?\s+(?:a|ao|à)?\s*",
 )
+
+
+def _limpar_ruido(texto: str) -> str:
+    """Remove cabeçalho/rodapé repetido que o PDF injeta no meio do texto."""
+    return _PADRAO_RUIDO_PAGINA.sub(" ", texto)
 
 
 def _limpar(texto: str | None) -> str | None:
@@ -144,6 +161,7 @@ def pre_processar_documento(texto: str) -> list[SubProcesso]:
     detalhamento, sem a tabela), cai no comportamento antigo: separa
     direto pelos cabeçalhos de detalhamento.
     """
+    texto = _limpar_ruido(texto)
     indice = extrair_indice(texto)
 
     if not indice:
@@ -204,3 +222,27 @@ def montar_campos_para_matcher(sp: SubProcesso) -> dict[str, str]:
             break
 
     return campos
+
+
+def gerar_texto_para_ponte(subprocessos: list[SubProcesso]) -> str:
+    """
+    Converte os subprocessos extraídos no formato que a Ponte MIT 41 do
+    Buscador de XML já sabe ler (o mesmo formato do interpretador de IA)
+    -- pra copiar daqui e colar lá, em vez de colar a tabela visual
+    (que é frágil: cópia de tabela renderizada perde alinhamento e não
+    tem "CAMPO=valor" nenhum pra reconhecer).
+    """
+    blocos = []
+    for sp in subprocessos:
+        linhas = ["[INICIO_MOVIMENTO]", f"NOME_MOVIMENTO={sp.titulo}"]
+        if sp.processo_relacionado:
+            linhas.append(f"PROCESSO_ORIGEM={sp.processo_relacionado}")
+        if sp.texto_to_be:
+            texto_to_be_lower = sp.texto_to_be.lower()
+            for palavra in _PALAVRAS_FISCAL_APROXIMADAS:
+                if palavra in texto_to_be_lower:
+                    linhas.append(f"TRIBUTACAO={sp.texto_to_be[:120]}")
+                    break
+        linhas.append("[FIM_MOVIMENTO]")
+        blocos.append("\n".join(linhas))
+    return "\n\n".join(blocos)

@@ -14,7 +14,11 @@ from .. import config
 from ..xml_cleaner import limpar_xml
 from ..mit41.parser import parsear_mit41, separar_movimentos
 from ..mit41.matcher import sugerir_grupos
-from ..mit41.pre_processador import pre_processar_documento, montar_campos_para_matcher
+from ..mit41.pre_processador import (
+    pre_processar_documento,
+    montar_campos_para_matcher,
+    gerar_texto_para_ponte,
+)
 
 router = APIRouter(prefix="/api/xml", tags=["xml"])
 
@@ -91,6 +95,7 @@ async def pre_processar_mit41_bruto(arquivo: UploadFile = File(...)):
 
     subprocessos = pre_processar_documento(texto)
     return {
+        "texto_para_ponte": gerar_texto_para_ponte(subprocessos),
         "subprocessos": [
             {
                 "numero": sp.numero,
