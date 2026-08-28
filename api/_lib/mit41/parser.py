@@ -1,114 +1,62 @@
 """
-Sugere qual(is) grupo(s) de movimento (1.1 a 4.1) correspondem aos campos
-extraídos da saída do interpretador de MIT 41.
+Parser da saída do Interpretador de MIT 41 (o Gem do Gemini).
 
-NÃO é machine learning nem IA -- é um conjunto de regras baseadas no que
-cada grupo significa de negócio (ver api/_lib/config.py). Cada grupo
-recebe uma pontuação, e o resultado mostra os SINAIS que levaram a essa
-pontuação -- o analista vê o porquê, não uma caixa preta, e confirma
-antes de usar.
+O analista usa o Gem no app do Gemini (fora desse sistema, de propósito
+-- ver CONTEXTO_PROJETO.md seção 4) e cola aqui um trecho da resposta.
+Essa resposta é estruturada em blocos tipo:
+
+    [INICIO_MOVIMENTO]
+    PROCESSO_ORIGEM=Requisição de Compra
+    PROCESSO_DESTINO=Nota Fiscal de Entrada
+    [ESTOQUE] EFEITO_ESTOQUE=Aumenta, LOCAL_ORIGEM=Fornecedor, ...
+    [FIM_MOVIMENTO]
+
+Esse parser não presume um layout rígido de linha -- aceita campo por
+linha OU vários campos separados por vírgula na mesma linha, porque o
+Gem pode variar isso um pouco entre respostas.
 """
 
-PALAVRAS_ENTRADA = ["compra", "fornecedor", "aquisição", "importação"]
-PALAVRAS_SAIDA = ["venda", "cliente", "faturamento", "expedição", "remessa"]
-PALAVRAS_TRANSFERENCIA = ["transferência", "transferencia", "filial", "outro local", "outra filial"]
-PALAVRAS_INTERNO = [
-    "requisição de material", "requisição de consumo", "requisição interna",
-    "consumo", "baixa", "perda", "avaria",
-    "inventário", "inventario", "produção", "producao", "matéria-prima", "materia-prima",
-]
+import re
 
-# Campos da seção [FISCAL] que indicam efeito fiscal de verdade quando
-# preenchidos. Documento real mostrou que "DOCUMENTO_FISCAL" sozinho não
-# basta -- muitos movimentos descrevem o efeito fiscal só em TRIBUTACAO,
-# OPERACAO_FISCAL, RETENCOES ou ESCRITURACAO. "OBSERVACAO_FISCAL" fica de
-# fora de propósito: no documento real, é usado com frequência pra dizer
-# exatamente o contrário ("Movimento não gera integração fiscal").
-CAMPOS_INDICAM_FISCAL = ["DOCUMENTO_FISCAL", "OPERACAO_FISCAL", "TRIBUTACAO", "RETENCOES", "ESCRITURACAO"]
+# Acha qualquer "CAMPO=valor", parando no próximo CAMPO=, numa vírgula
+# antes dele, numa tag [ALGO], ou no fim do texto.
+_PADRAO_CAMPO = re.compile(
+    r"([A-Z][A-Z0-9_]*)\s*=\s*(.*?)(?=(?:,\s*)?[A-Z][A-Z0-9_]*\s*=|\[|\Z)",
+    re.DOTALL,
+)
 
-# Valores que significam "não tem documento fiscal", pra não confundir
-# com um valor de verdade preenchido.
-_VALORES_SEM_DOC_FISCAL = {"", "não", "nao", "n/a", "na", "nenhum", "não informado", "nao informado"}
+# Acha cada bloco [INICIO_MOVIMENTO]...[FIM_MOVIMENTO] -- o documento real
+# do interpretador pode trazer VÁRIOS movimentos num só texto (um MIT 41
+# inteiro chega a ter 15-20). Sem separar isso, os campos de movimentos
+# diferentes se misturariam num dicionário só.
+_PADRAO_MOVIMENTO = re.compile(
+    r"\[INICIO_MOVIMENTO\](.*?)\[FIM_MOVIMENTO\]", re.DOTALL
+)
 
 
-def sugerir_grupos(campos: dict[str, str]) -> list[dict]:
+def separar_movimentos(texto: str) -> list[str]:
     """
-    Recebe os campos já extraídos (ver parser.py) e devolve uma lista de
-    sugestões, ordenada da mais provável pra menos provável, cada uma com
-    os sinais que levaram àquela pontuação.
+    Separa um texto com um ou mais blocos [INICIO_MOVIMENTO]...[FIM_MOVIMENTO]
+    em uma lista de textos individuais, um por movimento.
+
+    Se o texto colado não tiver essas tags (ex: o analista colou só um
+    trecho solto, sem os marcadores), devolve o texto inteiro como um
+    único "movimento" -- mantém compatibilidade com colagem parcial.
     """
-    texto_processo = " ".join(
-        [campos.get("PROCESSO_ORIGEM", ""), campos.get("PROCESSO_DESTINO", ""),
-         campos.get("NOME_MOVIMENTO", "")]
-    ).lower()
+    blocos = _PADRAO_MOVIMENTO.findall(texto)
+    return blocos if blocos else [texto]
 
-    local_origem = campos.get("LOCAL_ORIGEM", "").strip()
-    local_destino = campos.get("LOCAL_DESTINO", "").strip()
 
-    pontuacoes: dict[str, int] = {g: 0 for g in ("1.1", "1.2", "2.1", "2.2", "3.1", "4.1")}
-    sinais: dict[str, list[str]] = {g: [] for g in pontuacoes}
-
-    def pontuar(grupo: str, pontos: int, motivo: str):
-        pontuacoes[grupo] += pontos
-        sinais[grupo].append(motivo)
-
-    # Sinal de "devolução" tem prioridade sobre o sinal genérico de
-    # compra/venda, porque muda a direção: devolução DE COMPRA (pro
-    # fornecedor) é uma SAÍDA (2.2); devolução DE VENDA (do cliente) é
-    # uma ENTRADA (1.2). Documento real confirmou esse caso.
-    eh_devolucao = "devolução" in texto_processo or "devolucao" in texto_processo
-    if eh_devolucao and any(p in texto_processo for p in ["compra", "fornecedor"]):
-        pontuar("2.2", 3, "Devolução de compra/pra fornecedor -- é uma saída de mercadoria")
-    elif eh_devolucao and any(p in texto_processo for p in ["venda", "cliente"]):
-        pontuar("1.2", 3, "Devolução de venda/de cliente -- é uma entrada de mercadoria")
-    else:
-        # Direção: entrada (compra) ou saída (venda), via palavra-chave no processo
-        if any(p in texto_processo for p in PALAVRAS_ENTRADA):
-            pontuar("1.1", 2, "Processo menciona termo de entrada/compra")
-            pontuar("1.2", 2, "Processo menciona termo de entrada/compra")
-        if any(p in texto_processo for p in PALAVRAS_SAIDA):
-            pontuar("2.1", 2, "Processo menciona termo de saída/venda")
-            pontuar("2.2", 2, "Processo menciona termo de saída/venda")
-
-    if any(p in texto_processo for p in PALAVRAS_TRANSFERENCIA):
-        pontuar("3.1", 3, "Processo menciona termo de transferência")
-    if any(p in texto_processo for p in PALAVRAS_INTERNO):
-        pontuar("4.1", 3, "Processo menciona termo de movimento interno")
-
-    # Documento fiscal separa "sem efeito fiscal" (1.1/2.1) de "com efeito fiscal" (1.2/2.2)
-    # -- checa vários campos da seção FISCAL, não só DOCUMENTO_FISCAL (ver CAMPOS_INDICAM_FISCAL)
-    campo_fiscal_encontrado = None
-    for campo in CAMPOS_INDICAM_FISCAL:
-        valor = campos.get(campo, "").strip().lower()
-        if valor and valor not in _VALORES_SEM_DOC_FISCAL:
-            campo_fiscal_encontrado = (campo, campos.get(campo))
-            break
-
-    if campo_fiscal_encontrado:
-        nome_campo, valor_campo = campo_fiscal_encontrado
-        resumo = valor_campo if len(valor_campo) <= 40 else valor_campo[:37] + "..."
-        pontuar("1.2", 2, f'Campo "{nome_campo}" preenchido ("{resumo}")')
-        pontuar("2.2", 2, f'Campo "{nome_campo}" preenchido ("{resumo}")')
-    else:
-        pontuar("1.1", 1, "Nenhum campo fiscal preenchido")
-        pontuar("2.1", 1, "Nenhum campo fiscal preenchido")
-
-    # Dois locais diferentes preenchidos -- indício de transferência
-    if local_origem and local_destino and local_origem.lower() != local_destino.lower():
-        pontuar(
-            "3.1", 2,
-            f'Origem ("{local_origem}") e destino ("{local_destino}") são locais diferentes',
-        )
-
-    resultado = [
-        {"grupo": g, "pontuacao": p, "sinais": sinais[g]}
-        for g, p in pontuacoes.items()
-        if p >= 2  # piso de confiança -- 1 ponto é empate fraco (ex: só
-                   # "sem campo fiscal"), não sinal de verdade. Documento
-                   # real mostrou que abaixo disso o resultado é ruído
-                   # (cadastros e gestão de contrato, que nem são "tipo
-                   # de movimento" de verdade, ficavam com uma sugestão
-                   # falsa por causa desse empate.)
-    ]
-    resultado.sort(key=lambda x: x["pontuacao"], reverse=True)
-    return resultado
+def parsear_mit41(texto: str) -> dict[str, str]:
+    """
+    Extrai os campos "CAMPO=valor" de um trecho da saída do interpretador.
+    Devolve só os campos que têm valor de verdade (ignora campo vazio,
+    que é como o Gem sinaliza "não informado no documento").
+    """
+    campos: dict[str, str] = {}
+    for match in _PADRAO_CAMPO.finditer(texto):
+        chave = match.group(1).strip()
+        valor = match.group(2).strip().rstrip(",").strip()
+        if valor:
+            campos[chave] = valor
+    return campos
