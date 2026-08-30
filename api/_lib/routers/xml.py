@@ -21,6 +21,8 @@ from ..mit41.pre_processador import (
     extrair_indice_de_tabelas,
 )
 from ..registro_uso import registrar_uso
+from ..db import SessionLocal
+from ..models import XmlPersonalizado
 
 router = APIRouter(prefix="/api/xml", tags=["xml"])
 
@@ -126,6 +128,108 @@ async def pre_processar_mit41_bruto(arquivo: UploadFile = File(...)):
     }
 
 
+@router.post("/limpar-avulso")
+async def limpar_xml_avulso(arquivo: UploadFile = File(...)):
+    """
+    Higieniza um XML enviado na hora, SEM salvar em lugar nenhum -- nem
+    no banco, nem na pasta. Serve pra quem só quer limpar um XML de
+    outro projeto/uso pontual, sem contribuir ele pra base compartilhada
+    (isso é uma ação separada, ver /enviar).
+    """
+    conteudo_bytes = await arquivo.read()
+    try:
+        conteudo_original = conteudo_bytes.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise HTTPException(
+            status_code=400,
+            detail="Arquivo não parece ser um XML de texto válido (falha ao decodificar).",
+        )
+
+    xml_limpo, campos_zerados = limpar_xml(conteudo_original)
+    nome_saida = (arquivo.filename or "arquivo").rsplit(".", 1)[0] + "_LIMPO.xml"
+
+    registrar_uso("xml", "limpar-avulso", {"campos_zerados": campos_zerados})
+    return Response(
+        content=xml_limpo,
+        media_type="application/xml",
+        headers={
+            "Content-Disposition": f'attachment; filename="{nome_saida}"',
+            "X-Campos-Zerados": str(campos_zerados),
+        },
+    )
+
+
+@router.post("/enviar")
+async def enviar_xml_personalizado(grupo: str, arquivo: UploadFile = File(...)):
+    """
+    Recebe um XML que o próprio usuário quer usar como referência, fora
+    da base padrão. Higieniza ele igual aos arquivos normais, e guarda
+    original + higienizado no banco (não tem como virar arquivo
+    persistente na pasta -- ver docstring de XmlPersonalizado).
+    """
+    if not config.grupo_existe(grupo):
+        raise HTTPException(status_code=404, detail=f"Grupo '{grupo}' não encontrado.")
+
+    conteudo_bytes = await arquivo.read()
+    try:
+        conteudo_original = conteudo_bytes.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise HTTPException(
+            status_code=400,
+            detail="Arquivo não parece ser um XML de texto válido (falha ao decodificar).",
+        )
+
+    if len(conteudo_original) > 2_000_000:
+        raise HTTPException(
+            status_code=400,
+            detail="Arquivo muito grande (limite de ~2MB de texto pra esse tipo de envio).",
+        )
+
+    xml_limpo, campos_zerados = limpar_xml(conteudo_original)
+
+    db = SessionLocal()
+    try:
+        registro = XmlPersonalizado(
+            grupo=grupo,
+            nome_arquivo=arquivo.filename or "sem_nome.xml",
+            conteudo_original=conteudo_original,
+            conteudo_limpo=xml_limpo,
+            campos_zerados=campos_zerados,
+        )
+        db.add(registro)
+        db.commit()
+        db.refresh(registro)
+        novo_id = registro.id
+    finally:
+        db.close()
+
+    registrar_uso("xml", "enviar-personalizado", {"grupo": grupo, "arquivo": arquivo.filename})
+    return {"id": novo_id, "arquivo": arquivo.filename, "campos_zerados": campos_zerados}
+
+
+@router.get("/baixar-personalizado/{xml_id}")
+def baixar_xml_personalizado(xml_id: int):
+    """Baixa a versão já higienizada de um XML personalizado, pelo id."""
+    db = SessionLocal()
+    try:
+        registro = db.query(XmlPersonalizado).filter(XmlPersonalizado.id == xml_id).first()
+    finally:
+        db.close()
+
+    if not registro:
+        raise HTTPException(status_code=404, detail="XML personalizado não encontrado.")
+
+    nome_saida = registro.nome_arquivo.rsplit(".", 1)[0] + "_LIMPO.xml"
+    return Response(
+        content=registro.conteudo_limpo,
+        media_type="application/xml",
+        headers={
+            "Content-Disposition": f'attachment; filename="{nome_saida}"',
+            "X-Campos-Zerados": str(registro.campos_zerados),
+        },
+    )
+
+
 @router.get("/grupos")
 def listar_grupos():
     """Devolve a lista de grupos de movimento disponíveis (pro dropdown do front)."""
@@ -153,13 +257,35 @@ def buscar_arquivos(grupo: str, busca: str = ""):
         )
 
     termo = busca.strip().lower()
-    arquivos = sorted(
+    arquivos_pasta = sorted(
         f.name
         for f in pasta.iterdir()
         if f.suffix.lower() == ".xml" and termo in f.stem.lower()
     )
-    registrar_uso("xml", "buscar", {"grupo": grupo, "busca": termo, "total_encontrado": len(arquivos)})
-    return {"grupo": grupo, "arquivos": arquivos}
+
+    # XMLs enviados por usuários pra esse grupo (guardados no banco --
+    # não têm como virar arquivo persistente na pasta, ver docstring de
+    # XmlPersonalizado). Se o banco falhar por qualquer motivo, a busca
+    # normal continua funcionando -- só sem os personalizados dessa vez.
+    personalizados = []
+    try:
+        db = SessionLocal()
+        try:
+            consulta = db.query(XmlPersonalizado).filter(XmlPersonalizado.grupo == grupo)
+            if termo:
+                consulta = consulta.filter(XmlPersonalizado.nome_arquivo.ilike(f"%{termo}%"))
+            personalizados = [
+                {"id": p.id, "nome": p.nome_arquivo, "personalizado": True}
+                for p in consulta.order_by(XmlPersonalizado.criado_em.desc()).all()
+            ]
+        finally:
+            db.close()
+    except Exception:
+        pass
+
+    resultado = [{"nome": nome, "personalizado": False} for nome in arquivos_pasta] + personalizados
+    registrar_uso("xml", "buscar", {"grupo": grupo, "busca": termo, "total_encontrado": len(resultado)})
+    return {"grupo": grupo, "arquivos": resultado}
 
 
 @router.post("/limpar")

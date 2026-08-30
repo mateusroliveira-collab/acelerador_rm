@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Header } from "../components/Header";
 
 type Grupo = { codigo: string; label: string | null; descricao?: string | null };
+type ArquivoResultado = { nome: string; personalizado: boolean; id?: number };
 type SugestaoGrupo = { grupo: string; pontuacao: number; sinais: string[] };
 type MovimentoAnalisado = {
   nome_movimento: string | null;
@@ -16,10 +17,18 @@ export default function BuscadorXmlPage() {
     null
   );
   const [busca, setBusca] = useState("");
-  const [arquivos, setArquivos] = useState<string[]>([]);
+  const [arquivos, setArquivos] = useState<ArquivoResultado[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [baixando, setBaixando] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+
+  const [arquivoParaEnviar, setArquivoParaEnviar] = useState<File | null>(
+    null
+  );
+  const [enviando, setEnviando] = useState(false);
+
+  const [arquivoAvulso, setArquivoAvulso] = useState<File | null>(null);
+  const [limpandoAvulso, setLimpandoAvulso] = useState(false);
 
   const [textoMit41, setTextoMit41] = useState("");
   const [movimentos, setMovimentos] = useState<MovimentoAnalisado[] | null>(
@@ -36,50 +45,107 @@ export default function BuscadorXmlPage() {
       );
   }, []);
 
-  useEffect(() => {
+  async function buscarArquivos() {
     if (!grupoSelecionado) {
       setArquivos([]);
       return;
     }
     setCarregando(true);
     setErro(null);
-    const params = new URLSearchParams({ grupo: grupoSelecionado, busca });
-    fetch(`/api/xml/buscar?${params}`)
-      .then((r) => {
-        if (!r.ok) throw new Error();
-        return r.json();
-      })
-      .then((data) => setArquivos(data.arquivos))
-      .catch(() =>
-        setErro("Não foi possível buscar os arquivos desse grupo.")
-      )
-      .finally(() => setCarregando(false));
+    try {
+      const params = new URLSearchParams({ grupo: grupoSelecionado, busca });
+      const resposta = await fetch(`/api/xml/buscar?${params}`);
+      if (!resposta.ok) throw new Error();
+      const dados = await resposta.json();
+      setArquivos(dados.arquivos);
+    } catch {
+      setErro("Não foi possível buscar os arquivos desse grupo.");
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  useEffect(() => {
+    buscarArquivos();
   }, [grupoSelecionado, busca]);
 
-  async function baixarLimpo(arquivo: string) {
+  async function baixarLimpo(item: ArquivoResultado) {
     if (!grupoSelecionado) return;
-    setBaixando(arquivo);
+    setBaixando(item.nome);
     setErro(null);
     try {
-      const params = new URLSearchParams({
-        grupo: grupoSelecionado,
-        arquivo,
-      });
-      const resposta = await fetch(`/api/xml/limpar?${params}`, {
-        method: "POST",
+      const rota = item.personalizado
+        ? `/api/xml/baixar-personalizado/${item.id}`
+        : `/api/xml/limpar?${new URLSearchParams({ grupo: grupoSelecionado, arquivo: item.nome })}`;
+      const resposta = await fetch(rota, {
+        method: item.personalizado ? "GET" : "POST",
       });
       if (!resposta.ok) throw new Error();
       const blob = await resposta.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = arquivo.replace(".xml", "_LIMPO.xml");
+      link.download = item.nome.replace(".xml", "_LIMPO.xml");
       link.click();
       URL.revokeObjectURL(url);
     } catch {
-      setErro(`Não foi possível higienizar "${arquivo}".`);
+      setErro(`Não foi possível higienizar "${item.nome}".`);
     } finally {
       setBaixando(null);
+    }
+  }
+
+  async function limparXmlAvulso() {
+    if (!arquivoAvulso) return;
+    setLimpandoAvulso(true);
+    setErro(null);
+    try {
+      const formData = new FormData();
+      formData.append("arquivo", arquivoAvulso);
+      const resposta = await fetch("/api/xml/limpar-avulso", {
+        method: "POST",
+        body: formData,
+      });
+      if (!resposta.ok) throw new Error();
+      const blob = await resposta.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = arquivoAvulso.name.replace(".xml", "_LIMPO.xml");
+      link.click();
+      URL.revokeObjectURL(url);
+      setArquivoAvulso(null);
+    } catch {
+      setErro("Não foi possível limpar esse arquivo.");
+    } finally {
+      setLimpandoAvulso(false);
+    }
+  }
+
+  async function enviarXmlPersonalizado() {
+    if (!arquivoParaEnviar || !grupoSelecionado) return;
+    setEnviando(true);
+    setErro(null);
+    try {
+      const formData = new FormData();
+      formData.append("arquivo", arquivoParaEnviar);
+      const params = new URLSearchParams({ grupo: grupoSelecionado });
+      const resposta = await fetch(`/api/xml/enviar?${params}`, {
+        method: "POST",
+        body: formData,
+      });
+      if (!resposta.ok) {
+        const dados = await resposta.json().catch(() => null);
+        throw new Error(dados?.detail || "Erro ao enviar o arquivo.");
+      }
+      setArquivoParaEnviar(null);
+      await buscarArquivos();
+    } catch (e) {
+      setErro(
+        e instanceof Error ? e.message : "Não foi possível enviar o XML."
+      );
+    } finally {
+      setEnviando(false);
     }
   }
 
@@ -105,6 +171,7 @@ export default function BuscadorXmlPage() {
         dados.movimentos[0].sugestoes.length > 0
       ) {
         setGrupoSelecionado(dados.movimentos[0].sugestoes[0].grupo);
+        setBusca(dados.movimentos[0].nome_movimento ?? "");
       }
     } catch {
       setErro("Não foi possível analisar o texto do MIT 41.");
@@ -124,6 +191,42 @@ export default function BuscadorXmlPage() {
           Selecione o tipo de movimento, encontre o template certo e gere a
           versão higienizada, pronta para parametrização.
         </p>
+
+        {/* Limpeza avulsa -- pra qualquer XML de qualquer projeto, sem
+            salvar em lugar nenhum. Não depende de escolher um grupo. */}
+        <div className="mt-8 rounded-lg border border-line bg-surface p-4">
+          <h2 className="font-display text-sm font-bold text-ink">
+            Só quer limpar um XML seu? (não salva em lugar nenhum)
+          </h2>
+          <p className="mt-1 text-xs text-muted">
+            Pra usar num outro projeto, sem virar parte da base
+            compartilhada -- sobe, baixa limpo, pronto.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <label className="flex-1 cursor-pointer text-sm text-muted">
+              {arquivoAvulso
+                ? arquivoAvulso.name
+                : "Clique para escolher um arquivo XML"}
+              <input
+                type="file"
+                accept=".xml"
+                className="hidden"
+                onChange={(e) =>
+                  setArquivoAvulso(e.target.files?.[0] ?? null)
+                }
+              />
+            </label>
+            {arquivoAvulso && (
+              <button
+                onClick={limparXmlAvulso}
+                disabled={limpandoAvulso}
+                className="shrink-0 rounded-md bg-action px-4 py-2 text-sm font-medium text-white transition hover:bg-action-hover disabled:opacity-50"
+              >
+                {limpandoAvulso ? "Limpando..." : "Limpar e baixar"}
+              </button>
+            )}
+          </div>
+        </div>
 
         {/* Ponte com o Interpretador de MIT 41 -- opcional, sugere o
             grupo com base nos campos extraídos, sem decidir sozinho */}
@@ -175,7 +278,12 @@ export default function BuscadorXmlPage() {
                   {mov.sugestoes.slice(0, 2).map((s) => (
                     <button
                       key={s.grupo}
-                      onClick={() => setGrupoSelecionado(s.grupo)}
+                      onClick={() => {
+                        setGrupoSelecionado(s.grupo);
+                        // Já filtra a lista abaixo pelo nome do movimento,
+                        // pra cair direto nos arquivos que interessam.
+                        setBusca(mov.nome_movimento ?? "");
+                      }}
                       className="mt-1 block w-full rounded border border-line px-2 py-1 text-left text-xs transition hover:border-brand"
                     >
                       <span className="font-mono font-bold text-ink">
@@ -223,18 +331,59 @@ export default function BuscadorXmlPage() {
 
         {/* Busca */}
         {grupoSelecionado && (
-          <div className="mt-8">
-            <label className="sr-only" htmlFor="busca">
-              Buscar movimento
+          <div className="mt-8 flex gap-2">
+            <div className="flex-1">
+              <label className="sr-only" htmlFor="busca">
+                Buscar movimento
+              </label>
+              <input
+                id="busca"
+                type="text"
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder={`Buscar dentro do grupo ${grupoSelecionado}...`}
+                className="w-full rounded-lg border border-line bg-surface px-4 py-3 text-ink placeholder:text-muted focus:border-brand"
+              />
+            </div>
+            {busca && (
+              <button
+                onClick={() => setBusca("")}
+                className="shrink-0 rounded-lg border border-line bg-surface px-4 py-3 text-sm text-muted transition hover:border-brand hover:text-ink"
+              >
+                Limpar filtro
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Upload de XML fora da base padrão -- fica salvo pra sempre no
+            banco (não na pasta, que não persiste em produção), e passa
+            a aparecer na busca de QUALQUER PESSOA junto com os demais.
+            Ação separada e deliberada, diferente da limpeza avulsa. */}
+        {grupoSelecionado && (
+          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-dashed border-line bg-surface px-4 py-3">
+            <label className="flex-1 cursor-pointer text-sm text-muted">
+              {arquivoParaEnviar
+                ? arquivoParaEnviar.name
+                : `Ou contribua um XML de referência pro grupo ${grupoSelecionado} -- fica salvo e visível pra todo mundo que buscar aqui depois.`}
+              <input
+                type="file"
+                accept=".xml"
+                className="hidden"
+                onChange={(e) =>
+                  setArquivoParaEnviar(e.target.files?.[0] ?? null)
+                }
+              />
             </label>
-            <input
-              id="busca"
-              type="text"
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              placeholder={`Buscar dentro do grupo ${grupoSelecionado}...`}
-              className="w-full rounded-lg border border-line bg-surface px-4 py-3 text-ink placeholder:text-muted focus:border-brand"
-            />
+            {arquivoParaEnviar && (
+              <button
+                onClick={enviarXmlPersonalizado}
+                disabled={enviando}
+                className="shrink-0 rounded-md bg-action px-4 py-2 text-sm font-medium text-white transition hover:bg-action-hover disabled:opacity-50"
+              >
+                {enviando ? "Enviando..." : "Contribuir"}
+              </button>
+            )}
           </div>
         )}
 
@@ -266,18 +415,27 @@ export default function BuscadorXmlPage() {
             </p>
           )}
 
-          {arquivos.map((arquivo) => (
+          {arquivos.map((item) => (
             <div
-              key={arquivo}
+              key={item.personalizado ? `p-${item.id}` : item.nome}
               className="flex items-center justify-between gap-4 px-4 py-3"
             >
-              <span className="font-mono text-sm text-ink">{arquivo}</span>
+              <span className="flex items-center gap-2">
+                <span className="font-mono text-sm text-ink">
+                  {item.nome}
+                </span>
+                {item.personalizado && (
+                  <span className="rounded-full bg-brand/20 px-2 py-0.5 text-[10px] font-medium text-brand-light">
+                    enviado por você
+                  </span>
+                )}
+              </span>
               <button
-                onClick={() => baixarLimpo(arquivo)}
-                disabled={baixando === arquivo}
+                onClick={() => baixarLimpo(item)}
+                disabled={baixando === item.nome}
                 className="shrink-0 rounded-md bg-action px-4 py-2 text-sm font-medium text-white transition hover:bg-action-hover disabled:opacity-50"
               >
-                {baixando === arquivo ? "Gerando..." : "Limpar e baixar"}
+                {baixando === item.nome ? "Gerando..." : "Limpar e baixar"}
               </button>
             </div>
           ))}
