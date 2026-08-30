@@ -12,7 +12,37 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./dev.db")
+
+def _descobrir_database_url() -> str:
+    """
+    A integração nativa Neon<->Vercel às vezes cria a variável com nome
+    diferente de DATABASE_URL (ex: POSTGRES_URL, ou só as peças soltas
+    PGHOST/PGUSER/PGPASSWORD/PGDATABASE) -- confere várias
+    possibilidades antes de desistir e cair pro SQLite local.
+    """
+    for nome in ("DATABASE_URL", "POSTGRES_URL", "POSTGRES_PRISMA_URL", "DATABASE_URL_UNPOOLED"):
+        valor = os.environ.get(nome)
+        if valor:
+            return valor
+
+    # Monta a partir das peças soltas, se existirem (padrão do Vercel Postgres/Neon)
+    host = os.environ.get("PGHOST")
+    user = os.environ.get("PGUSER")
+    senha = os.environ.get("PGPASSWORD")
+    banco = os.environ.get("PGDATABASE")
+    if host and user and senha and banco:
+        return f"postgresql://{user}:{senha}@{host}/{banco}?sslmode=require"
+
+    # Reserva: SQLite -- só a pasta /tmp é gravável em ambiente
+    # serverless (Vercel). Isso NÃO persiste de forma confiável entre
+    # execuções (cada chamada pode cair numa instância diferente) -- é
+    # só pra não derrubar o app com um erro de "arquivo não pode ser
+    # aberto" enquanto a variável de banco não estiver configurada.
+    pasta_gravavel = "/tmp" if os.environ.get("VERCEL") else "."
+    return f"sqlite:///{pasta_gravavel}/dev.db"
+
+
+DATABASE_URL = _descobrir_database_url()
 
 # Neon (e alguns outros provedores) às vezes fornece a URL com o prefixo
 # antigo "postgres://" -- o SQLAlchemy moderno exige "postgresql://".
