@@ -6,40 +6,6 @@ from ..models import RegistroUso
 router = APIRouter(prefix="/api/log", tags=["log"])
 
 
-@router.get("/diagnostico-banco")
-def diagnostico_banco():
-    """
-    Rota TEMPORÁRIA de diagnóstico -- mostra quais variáveis de ambiente
-    de banco existem de verdade no ambiente rodando (sem expor valor de
-    senha nenhum), e qual URL o código decidiu usar (mascarada). Serve
-    só pra descobrir por que a conexão não está achando o Neon -- remover
-    depois de resolver.
-    """
-    import os
-    from ..db import DATABASE_URL
-
-    nomes_para_checar = [
-        "DATABASE_URL", "POSTGRES_URL", "POSTGRES_PRISMA_URL", "DATABASE_URL_UNPOOLED",
-        "PGHOST", "PGUSER", "PGPASSWORD", "PGDATABASE", "PGPORT",
-        "VERCEL",
-    ]
-    presenca = {nome: (os.environ.get(nome) is not None) for nome in nomes_para_checar}
-
-    # Mascara a URL que o código decidiu usar -- mostra só o começo,
-    # nunca a senha.
-    url_mascarada = DATABASE_URL
-    if "@" in url_mascarada:
-        prefixo, resto = url_mascarada.split("@", 1)
-        if ":" in prefixo:
-            protocolo_usuario = prefixo.rsplit(":", 1)[0]
-            url_mascarada = f"{protocolo_usuario}:***@{resto}"
-
-    return {
-        "variaveis_presentes": presenca,
-        "database_url_em_uso_mascarada": url_mascarada,
-    }
-
-
 @router.get("/recentes")
 def listar_registros_recentes(
     ferramenta: str | None = Query(default=None, description="Filtra por ferramenta: xml, cnab, mit41, registro_online"),
