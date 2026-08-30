@@ -11,11 +11,13 @@ from fastapi import FastAPI
 
 from ._lib.routers.xml import router as xml_router
 from ._lib.routers.cnab import router as cnab_router
+from ._lib.routers.registro_online_boleto import router as registro_online_router
 
 app = FastAPI(title="Ferramentas RM")
 
 app.include_router(xml_router)
 app.include_router(cnab_router)
+app.include_router(registro_online_router)
 
 
 @app.get("/api/health")
