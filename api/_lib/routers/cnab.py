@@ -9,6 +9,7 @@ from ..cnab.cnab240.corretor import corrigir_cnab240
 from ..cnab.cnab400.validador import validar_cnab400
 from ..cnab.cnab400.validador_caixa import validar_cnab400_caixa
 from ..cnab.registro_online.validador import traduzir_erro_banco
+from ..registro_uso import registrar_uso
 
 router = APIRouter(prefix="/api/cnab", tags=["cnab"])
 
@@ -19,6 +20,7 @@ async def validar_arquivo_240(arquivo: UploadFile = File(...)):
     conteudo_bytes = await arquivo.read()
     conteudo = conteudo_bytes.decode("utf-8-sig", errors="replace")
     resultado = validar_cnab240(conteudo)
+    registrar_uso("cnab", "validar-240", {"valido": resultado.valido, "total_erros": len(resultado.erros)})
     return resultado.to_dict()
 
 
@@ -33,6 +35,7 @@ async def validar_arquivo_400(arquivo: UploadFile = File(...)):
     conteudo_bytes = await arquivo.read()
     conteudo = conteudo_bytes.decode("utf-8-sig", errors="replace")
     resultado = validar_cnab400(conteudo)
+    registrar_uso("cnab", "validar-400", {"valido": resultado.valido, "total_erros": len(resultado.erros)})
     return resultado.to_dict()
 
 
@@ -46,6 +49,7 @@ async def validar_arquivo_400_caixa(arquivo: UploadFile = File(...)):
     conteudo_bytes = await arquivo.read()
     conteudo = conteudo_bytes.decode("utf-8-sig", errors="replace")
     resultado = validar_cnab400_caixa(conteudo)
+    registrar_uso("cnab", "validar-400-caixa", {"valido": resultado.valido, "total_erros": len(resultado.erros)})
     return resultado.to_dict()
 
 
@@ -59,6 +63,7 @@ async def corrigir_arquivo_240(arquivo: UploadFile = File(...)):
     conteudo_bytes = await arquivo.read()
     conteudo = conteudo_bytes.decode("utf-8-sig", errors="replace")
     resultado = corrigir_cnab240(conteudo)
+    registrar_uso("cnab", "corrigir-240", {"total_corrigido": resultado.total_corrigido, "total_pendente": resultado.total_pendente})
     return resultado.to_dict()
 
 
