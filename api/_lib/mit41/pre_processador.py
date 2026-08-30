@@ -273,10 +273,15 @@ def montar_campos_para_matcher(sp: SubProcesso) -> dict[str, str]:
 
     texto_to_be = (sp.texto_to_be or "").lower()
     for palavra in _PALAVRAS_FISCAL_APROXIMADAS:
-        if palavra in texto_to_be:
-            # Marca um sinal fiscal aproximado -- valor é só um trecho
-            # pra transparência, não uma classificação de verdade.
-            trecho_inicio = texto_to_be.find(palavra)
+        # Busca com limite de palavra (\b) -- não com "in" simples.
+        # Palavras curtas tipo "iss" (ISS) e "ipi" (IPI) são substring
+        # de palavras comuns em português ("emissão", "município",
+        # "princípio") -- já mordeu isso uma vez com "iss" dentro de
+        # "Emissão" em documento real. Limite de palavra resolve pra
+        # qualquer palavra da lista, atual ou futura.
+        if re.search(r"\b" + re.escape(palavra) + r"\b", texto_to_be):
+            match = re.search(r"\b" + re.escape(palavra) + r"\b", texto_to_be)
+            trecho_inicio = match.start()
             campos["TRIBUTACAO"] = (sp.texto_to_be or "")[
                 trecho_inicio : trecho_inicio + 60
             ]
