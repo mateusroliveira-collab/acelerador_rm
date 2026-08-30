@@ -20,6 +20,7 @@ from ..mit41.pre_processador import (
     gerar_texto_para_ponte,
     extrair_indice_de_tabelas,
 )
+from ..registro_uso import registrar_uso
 
 router = APIRouter(prefix="/api/xml", tags=["xml"])
 
@@ -58,6 +59,7 @@ def sugerir_grupo_por_mit41(corpo: TextoMit41):
             status_code=400,
             detail="Não consegui reconhecer nenhum campo nesse texto. Confirma se é a saída do interpretador de MIT 41.",
         )
+    registrar_uso("mit41", "sugerir-grupo", {"total_movimentos": len(resultados)})
     return {"movimentos": resultados}
 
 
@@ -102,6 +104,7 @@ async def pre_processar_mit41_bruto(arquivo: UploadFile = File(...)):
     # várias linhas -- testado e confirmado contra documento real).
     indice = extrair_indice_de_tabelas(tabelas)
     subprocessos = pre_processar_documento(texto, indice_pre_extraido=indice)
+    registrar_uso("mit41", "pre-processar", {"total_subprocessos": len(subprocessos)})
     return {
         "texto_para_ponte": gerar_texto_para_ponte(subprocessos),
         "subprocessos": [
@@ -155,6 +158,7 @@ def buscar_arquivos(grupo: str, busca: str = ""):
         for f in pasta.iterdir()
         if f.suffix.lower() == ".xml" and termo in f.stem.lower()
     )
+    registrar_uso("xml", "buscar", {"grupo": grupo, "busca": termo, "total_encontrado": len(arquivos)})
     return {"grupo": grupo, "arquivos": arquivos}
 
 
@@ -172,6 +176,7 @@ def limpar_arquivo(grupo: str, arquivo: str):
     xml_limpo, campos_zerados = limpar_xml(conteudo_original)
 
     nome_saida = caminho.stem + "_LIMPO.xml"
+    registrar_uso("xml", "limpar", {"grupo": grupo, "arquivo": arquivo, "campos_zerados": campos_zerados})
     return Response(
         content=xml_limpo,
         media_type="application/xml",
