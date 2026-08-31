@@ -1,24 +1,3 @@
-"""
-Motor de limpeza de XML -- adaptado do script original em Colab.
-
-O QUE MUDOU em relação à versão original:
-  - Não lê nem escreve arquivo em disco. Recebe o conteúdo do XML como
-    string e devolve o resultado como string. Quem decide o que fazer
-    com o resultado (mandar como download, salvar em algum lugar, etc.)
-    é a rota da API, não esta função. Isso é proposital: o sistema de
-    arquivos da Vercel é passageiro, então a função não pode depender
-    de gravar nada em disco pra funcionar.
-  - Sem os ajustes de ambiente do Colab (locale, google.colab.drive) --
-    não fazem sentido fora do notebook.
-  - Sem a interface de linha de comando (input()) -- os parâmetros
-    (grupo, arquivo escolhido) vêm da requisição HTTP.
-
-O QUE FICOU IGUAL:
-  - O regex de limpeza e a lista de campos de amarração são exatamente
-    os mesmos da versão que você já validou. Essa lógica é a parte mais
-    sensível do projeto, então não vale a pena reescrever.
-"""
-
 import logging
 import re
 
@@ -43,6 +22,9 @@ CAMPOS_PARA_ZERAR = [
     # "CodFormula" e "CodMen" são categorias novas: referência a Fórmula e
     # a Mensagem/Template, ambas configuração específica de cada ambiente.
     "CodCol", "CodDep", "CodFormula", "CodMen",
+    # "Series" -- referência à(s) série(s) de numeração de documento
+    # configurada(s) no ambiente original (ex: "RM"), também chumbada.
+    "Series",
 ]
 
 _REGEX_PREFIXOS = "|".join(CAMPOS_PARA_ZERAR)
