@@ -60,7 +60,7 @@ CODIGOS_MOVIMENTO_RETORNO_BB: dict[str, str] = {
     "28": "Débito de tarifas/custas",
     "29": "Ocorrências do sacado",
     "30": "Alteração de dados rejeitada",
-    "44": "Título pago com cheque devolvido",
+    "44": "Título pago com cheque devolvrido",
     "50": "Título pago com cheque pendente de compensação",
     "85": "Inclusão de negativação",
     "86": "Exclusão de negativação",
@@ -322,3 +322,37 @@ def decompor_codigos_ocorrencia(campo_231_240: str) -> list[str]:
     while len(codigos) > 1 and codigos[-1] == "00":
         codigos.pop()
     return [c for c in codigos if c]
+
+
+# --- CNAB 240, Regras Estruturais e Domínios de Negócio (Segmentos A, B, J, J52) ---
+# Extraído do Manual de Pagamentos Banco do Brasil - Versão junho/2026
+
+# Mapeamento para o Header de Lote (posição 12 a 13)
+FORMAS_LANCAMENTO_BB: dict[str, str] = {
+    "01": "Conta Corrente",
+    "03": "Transferência DOC/TED",
+    "05": "Poupança",
+    "30": "Pagamento de Salário",
+    "31": "Boleto Outros Bancos",
+    "41": "TED Outra Titularidade",
+    "43": "TED Mesma Titularidade",
+    "45": "Pix Transferência",
+    "47": "Pix QR-Code / FGTS Digital QR Code Dinâmico",
+}
+
+# Mapeamento para o Segmento A (posição 18 a 20)
+CAMARAS_CENTRALIZADORAS_BB: dict[str, str] = {
+    "018": "TED (STR, CIP)",
+    "700": "DOC (COMPE)",
+    "009": "PIX (SPI)",
+    "988": "TED utilizando o código ISPB",
+}
+
+# Mapeamento para o Segmento B (posição 15 a 17)
+FORMAS_INICIACAO_PIX_BB: dict[str, str] = {
+    "001": "Chave Pix - tipo Telefone",
+    "002": "Chave Pix - tipo Email",
+    "003": "Chave Pix - tipo CPF/CNPJ",
+    "004": "Chave Aleatória",
+    "005": "Dados bancários",
+}
