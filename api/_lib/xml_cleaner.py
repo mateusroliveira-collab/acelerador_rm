@@ -14,17 +14,7 @@ CAMPOS_PARA_ZERAR = [
     "CodDepto", "CodCCusto", "CodClassMov", "CodCfo", "CodTab",
     "IdPrd", "EstadosDeAprovacao", "StatusLote", "Tributos",
     "OutrosCodTipoDocumento", "CodTipoDoc",
-    # Adicionados depois de auditar um XML real de produção que dava erro
-    # de DataGridViewComboBoxCell/chave estrangeira nos grupos 1.1, 1.2,
-    # 2.2, 3.1 e 4.1 -- "CodCol" e "CodDep" generalizam os prefixos
-    # antigos (cobrem casos irmãos que a lista original não previu, ex:
-    # CodColCaixa, CodColCfoEmissao/Destino, CodDepartamentoDefaultMov).
-    # "CodFormula" e "CodMen" são categorias novas: referência a Fórmula e
-    # a Mensagem/Template, ambas configuração específica de cada ambiente.
-    "CodCol", "CodDep", "CodFormula", "CodMen",
-    # "Series" -- referência à(s) série(s) de numeração de documento
-    # configurada(s) no ambiente original (ex: "RM"), também chumbada.
-    "Series",
+    "CodCol", "CodDep","CodMen","Series",
 ]
 
 _REGEX_PREFIXOS = "|".join(CAMPOS_PARA_ZERAR)
