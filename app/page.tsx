@@ -35,7 +35,7 @@ export default function HomePage() {
           Acelerador de implantação SPUB
         </h1>
         <p className="mt-3 max-w-xl text-muted">
-          ferramentas internas aceleraradoras
+          Agentes aceleraradores
         </p>
 
         <div className="mt-10 grid gap-4 sm:grid-cols-3">
