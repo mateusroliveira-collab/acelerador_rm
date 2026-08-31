@@ -3,7 +3,7 @@ Rotas da API para o validador de CNAB.
 """
 
 from fastapi import APIRouter, UploadFile, File
-
+from api._lib.cnab.cnab400.validador_bb import validar_cnab400_bb
 from ..cnab.cnab240.validador import validar_cnab240
 from ..cnab.cnab240.corretor import corrigir_cnab240
 from ..cnab.cnab400.validador import validar_cnab400
@@ -74,3 +74,21 @@ def traduzir_erro(
     """Traduz um erro devolvido pelo banco (registro online) numa dica pro RM."""
     erro = traduzir_erro_banco(banco, codigo_erro, mensagem, tabela)
     return erro.to_dict()
+
+
+@router.post("/validar-400-bb")
+async def validar_arquivo_cnab400_bb(arquivo: UploadFile = File(...)):
+    if not arquivo.filename.upper().endswith((".TXT", ".RET", ".REM")):
+        raise HTTPException(
+            status_code=400, detail="O arquivo deve ser um .TXT, .RET ou .REM."
+        )
+
+    try:
+        conteudo_bytes = await arquivo.read()
+        conteudo_texto = conteudo_bytes.decode("utf-8", errors="replace")
+        
+        resultado = validar_cnab400_bb(conteudo_texto)
+        return resultado.to_dict()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
