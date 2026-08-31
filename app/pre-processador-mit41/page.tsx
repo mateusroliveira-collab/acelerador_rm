@@ -60,14 +60,12 @@ export default function PreProcessadorMit41Page() {
       <div className="mx-auto max-w-5xl">
         <Header />
         <h1 className="mt-6 font-display text-4xl font-bold text-ink md:text-5xl">
-          Pré-processador de MIT 41
+          Interpretador de MIT 41
         </h1>
         <p className="mt-3 max-w-2xl text-muted">
-          Sobe o PDF <strong>bruto</strong> do MIT 41 (antes de qualquer
-          IA) e organiza os subprocessos numa tabela -- via regra pura.
+          Submeta o PDF <strong>bruto</strong> do MIT 41 e organiza os subprocessos numa tabela -- via regra pura.
           Cada linha já vem com uma sugestão aproximada de grupo de XML,
-          e mostra onde a interpretação de negócio de verdade precisaria
-          de um passo a mais.
+          e mostra onde está a interpretação de negócio.
         </p>
 
         <div className="mt-8">

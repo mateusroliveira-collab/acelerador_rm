@@ -5,9 +5,9 @@ const ferramentas = [
   {
     href: "/pre-processador-mit41",
     codigo: "01",
-    titulo: "Pré-processador de MIT 41",
+    titulo: "Interpretador de MIT 41",
     descricao:
-      "Organiza o MIT 41 bruto em subprocessos via regra pura -- mostra onde a IA entraria.",
+      "Organiza o MIT 41 bruto em subprocessos via regra pura.",
     disponivel: true,
   },
   {
@@ -32,11 +32,10 @@ export default function HomePage() {
       <div className="mx-auto max-w-4xl">
         <Header />
         <h1 className="mt-6 font-display text-4xl font-bold text-ink md:text-5xl">
-          Ferramentas de parametrização
+          Acelerador de implantação SPUB
         </h1>
         <p className="mt-3 max-w-xl text-muted">
-          Três ferramentas internas para acelerar compras, estoque e
-          faturamento.
+          ferramentas internas aceleraradoras
         </p>
 
         <div className="mt-10 grid gap-4 sm:grid-cols-3">

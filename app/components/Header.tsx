@@ -41,7 +41,7 @@ export function Header() {
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-3">
         <Image
-          src={tema === "dark" ? "/totvs-logo-branca.png" : "/totvs-logo-escura.png"}
+          src={tema === "dark" ? "/totvs-logo-branca.png" : "/totvs-logo-preta.png"}
           alt="TOTVS"
           width={150}
           height={65}

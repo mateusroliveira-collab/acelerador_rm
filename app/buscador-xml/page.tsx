@@ -199,14 +199,14 @@ export default function BuscadorXmlPage() {
             Só quer limpar um XML seu? (não salva em lugar nenhum)
           </h2>
           <p className="mt-1 text-xs text-muted">
-            Pra usar num outro projeto, sem virar parte da base
-            compartilhada -- sobe, baixa limpo, pronto.
+            Para usar em um outro projeto, sem virar parte da base
+            compartilhada -- submeta, baixe limpo, pronto.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <label className="flex-1 cursor-pointer text-sm text-muted">
               {arquivoAvulso
                 ? arquivoAvulso.name
-                : "Clique para escolher um arquivo XML"}
+                : "Clique aqui para escolher um arquivo XML"}
               <input
                 type="file"
                 accept=".xml"
@@ -235,7 +235,7 @@ export default function BuscadorXmlPage() {
             Colar saída do Interpretador de MIT 41 (opcional)
           </h2>
           <p className="mt-1 text-xs text-muted">
-            Cola aqui um trecho da resposta do Gem -- a ferramenta sugere
+            Cola aqui um trecho da resposta do Interpretador -- a ferramenta sugere
             o grupo de movimento com base nos campos extraídos. Você
             confirma antes de usar.
           </p>
