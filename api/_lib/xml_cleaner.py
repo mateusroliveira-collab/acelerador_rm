@@ -14,7 +14,7 @@ CAMPOS_PARA_ZERAR = [
     "CodDepto", "CodCCusto", "CodClassMov", "CodCfo", "CodTab",
     "IdPrd", "EstadosDeAprovacao", "StatusLote", "Tributos",
     "OutrosCodTipoDocumento", "CodTipoDoc",
-    "CodCol", "CodDep","CodMen","Series",
+    "CodCol", "CodDep","CodMen","Series","MascaraNumeroMov"
 ]
 
 _REGEX_PREFIXOS = "|".join(CAMPOS_PARA_ZERAR)
