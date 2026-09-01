@@ -64,7 +64,7 @@ export default function HomePage() {
           ))}
         </div>
 
-{/* FOOTER ELEGANTE PREMIUM (Minimalista) */}
+{/* FOOTER ELEGANTE PREMIUM (Minimalista e Agrupado) */}
         <footer className="mt-24 mb-12 rounded-2xl border border-line bg-surface/50 px-6 py-5 shadow-sm md:px-8">
           <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
             
@@ -76,9 +76,10 @@ export default function HomePage() {
                 </svg>
                 Time Técnico
               </h3>
-              <div className="mt-3 flex flex-wrap gap-4 sm:gap-6">
+              {/* O segredo do agrupamento está aqui: flex flex-wrap gap-x-6 gap-y-3 */}
+              <div className="mt-3 flex flex-wrap gap-x-6 gap-y-3">
                 {[
-                  { nome: "Adoninas", inicial: "A" },
+                  { nome: "Adonias", inicial: "A" },
                   { nome: "Bento", inicial: "B" },
                   { nome: "Mateus", inicial: "M" },
                   { nome: "Moises", inicial: "M" },
