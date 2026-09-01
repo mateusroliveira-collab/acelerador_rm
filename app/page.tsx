@@ -78,7 +78,7 @@ export default function HomePage() {
               </h3>
               <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
                 {[
-                  { nome: "Adoninas", inicial: "A" },
+                  { nome: "Adonias", inicial: "A" },
                   { nome: "Bento", inicial: "B" },
                   { nome: "Mateus", inicial: "M" },
                   { nome: "Moises", inicial: "M" },
