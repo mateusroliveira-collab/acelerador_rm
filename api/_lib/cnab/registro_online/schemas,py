@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 
 # ==========================================
-# 🏦 CAIXA ECONÔMICA FEDERAL
+# CAIXA ECONÔMICA FEDERAL
 # ==========================================
 class EnderecoCaixa(BaseModel):
     logradouro: str = Field(..., max_length=40, description="Rua, avenida, etc.")
@@ -37,7 +37,7 @@ class SchemaBoletoCaixa(BaseModel):
 
 
 # ==========================================
-# 🏦 BANCO DO BRASIL
+# BANCO DO BRASIL
 # ==========================================
 class PagadorBB(BaseModel):
     tipoInscricao: int = Field(..., description="1 para CPF, 2 para CNPJ")

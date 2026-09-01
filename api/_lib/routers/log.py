@@ -1,4 +1,8 @@
+"""
+Rotas da API para consulta de logs e resumo de uso das ferramentas.
+"""
 from fastapi import APIRouter, Query
+from sqlalchemy import func
 
 from ..db import SessionLocal
 from ..models import RegistroUso
@@ -40,8 +44,6 @@ def resumo_de_uso():
     """Contagem de uso por ferramenta+ação -- visão rápida do que é mais usado."""
     db = SessionLocal()
     try:
-        from sqlalchemy import func
-
         resultado = (
             db.query(
                 RegistroUso.ferramenta,

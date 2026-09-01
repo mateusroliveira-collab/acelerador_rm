@@ -10,6 +10,7 @@ de detalhe, então isso importa.
 from ..erros import ErroValidacao, ResultadoValidacao
 from .layout import TAMANHO_LINHA, CampoLayout400
 from .bancos import caixa as layout
+from ..bancos.caixa import buscar_erro
 
 
 def _validar_campo(linha_num: int, texto_linha: str, campo: CampoLayout400):
@@ -146,9 +147,25 @@ def validar_cnab400_caixa(conteudo: str) -> ResultadoValidacao:
 
         if tipo_registro == "1":
             erros += _validar_registro(i, texto_linha, detalhe_layout)
+
+            # Para arquivos de RETORNO da Caixa, lê o código de motivo da rejeição (pos. 80 a 82)
+            if codigo_tipo == "2" and len(texto_linha) >= 82:
+                cod_rejeicao = texto_linha[79:82].strip()
+                if cod_rejeicao and cod_rejeicao not in ("00", ""):
+                    info = buscar_erro(cod_rejeicao, tabela="retorno_400")
+                    if info:
+                        erros.append(
+                            ErroValidacao(
+                                mensagem=f'Título Rejeitado pela Caixa: ({cod_rejeicao}) {info["mensagem_banco"]}',
+                                linha=i,
+                                posicao_inicio=80,
+                                posicao_fim=82,
+                                campo="Código do Motivo da Rejeição",
+                                valor_encontrado=cod_rejeicao,
+                                sugestao_rm=f'{info["causa_provavel"]} {info["sugestao_rm"]}',
+                            )
+                        )
         elif tipo_registro == "2":
-            # Registro de mensagens livres (só existe na remessa) -- ainda
-            # não validado campo a campo, só confere tamanho.
             if len(texto_linha) != TAMANHO_LINHA:
                 erros.append(
                     ErroValidacao(

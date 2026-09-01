@@ -33,11 +33,9 @@ export default function ValidadorCnabPage() {
   const [tipoValidacao, setTipoValidacao] = useState<"240" | "400" | "registro_online">("240");
   const [bancoCnab400, setBancoCnab400] = useState("generico");
   const [bancoRegistroOnline, setBancoRegistroOnline] = useState("caixa");
-
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [xmlPayload, setXmlPayload] = useState("");
   const [carregando, setCarregando] = useState(false);
-
   const [resultado, setResultado] = useState<ResultadoValidacao | null>(null);
   const [correcao, setCorrecao] = useState<Correcao | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -51,21 +49,18 @@ export default function ValidadorCnabPage() {
   async function validar() {
     setCarregando(true);
     limparResultados();
-
     try {
       let resposta;
-
       if (tipoValidacao === "registro_online") {
         if (!xmlPayload.trim()) {
           setErro("Cole o XML de requisição gerado pelo RM para o Registro Online.");
           setCarregando(false);
           return;
         }
-
-        const rotaXml = bancoRegistroOnline === "caixa" 
-          ? "/api/cnab/validar-xml-caixa" 
-          : "/api/cnab/validar-xml-bb";
-
+        const rotaXml =
+          bancoRegistroOnline === "caixa"
+            ? "/api/cnab/validar-xml-caixa"
+            : "/api/cnab/validar-xml-bb";
         resposta = await fetch(rotaXml, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -76,28 +71,22 @@ export default function ValidadorCnabPage() {
           setCarregando(false);
           return;
         }
-
         const formData = new FormData();
         formData.append("arquivo", arquivo);
-
         let rota = "/api/cnab/validar-240";
         if (tipoValidacao === "400") {
           if (bancoCnab400 === "caixa") rota = "/api/cnab/validar-400-caixa";
           else if (bancoCnab400 === "bb") rota = "/api/cnab/validar-400-bb";
           else rota = "/api/cnab/validar-400";
         }
-
         resposta = await fetch(rota, { method: "POST", body: formData });
       }
-
       const dados = await resposta.json();
-
       if (!resposta.ok) {
         setErro(dados?.detail || "Não foi possível processar a validação.");
         setCarregando(false);
         return;
       }
-
       setResultado(dados);
     } catch {
       setErro("Não foi possível processar a validação. O arquivo/XML pode estar mal formatado.");
@@ -110,17 +99,14 @@ export default function ValidadorCnabPage() {
     if (!arquivo || tipoValidacao !== "240") return;
     setCarregando(true);
     limparResultados();
-
     try {
       const formData = new FormData();
       formData.append("arquivo", arquivo);
-
       const resposta = await fetch("/api/cnab/corrigir-240", {
         method: "POST",
         body: formData,
       });
       if (!resposta.ok) throw new Error();
-
       const dados: Correcao = await resposta.json();
       setCorrecao(dados);
     } catch {
@@ -148,13 +134,11 @@ export default function ValidadorCnabPage() {
     <main className="min-h-screen px-6 py-12 md:px-12 lg:px-20">
       <div className="mx-auto max-w-4xl">
         <Header />
-
         <h1 className="mt-6 font-display text-4xl font-bold text-ink md:text-5xl">
           Validador de CNAB e Registro Online
         </h1>
         <p className="mt-3 max-w-xl text-muted">
-          Valida arquivos de remessa/retorno (240 e 400) e XML de
-          Registro Online gerado pelo TOTVS RM.
+          Valida arquivos de remessa/retorno (240 e 400) e XML de Registro Online gerado pelo TOTVS RM.
         </p>
 
         {/* Seletor de tipo */}
@@ -183,7 +167,10 @@ export default function ValidadorCnabPage() {
             <label className="text-xs text-muted">Banco Específico</label>
             <select
               value={bancoCnab400}
-              onChange={(e) => { setBancoCnab400(e.target.value); limparResultados(); }}
+              onChange={(e) => {
+                setBancoCnab400(e.target.value);
+                limparResultados();
+              }}
               className="mt-1 block rounded-lg border border-line bg-surface px-4 py-2 text-sm text-ink focus:border-brand"
             >
               <option value="generico">Genérico (qualquer banco)</option>
@@ -199,7 +186,10 @@ export default function ValidadorCnabPage() {
             <label className="text-xs text-muted">API do Banco</label>
             <select
               value={bancoRegistroOnline}
-              onChange={(e) => { setBancoRegistroOnline(e.target.value); limparResultados(); }}
+              onChange={(e) => {
+                setBancoRegistroOnline(e.target.value);
+                limparResultados();
+              }}
               className="mt-1 block rounded-lg border border-line bg-surface px-4 py-2 text-sm text-ink focus:border-brand"
             >
               <option value="caixa">Caixa Econômica (API Cobrança)</option>
@@ -213,8 +203,13 @@ export default function ValidadorCnabPage() {
           {tipoValidacao === "registro_online" ? (
             <textarea
               value={xmlPayload}
-              onChange={(e) => { setXmlPayload(e.target.value); limparResultados(); }}
-              placeholder={`Cole aqui o XML de requisição do Registro Online (${bancoRegistroOnline === 'caixa' ? 'Caixa' : 'BB'}).`}
+              onChange={(e) => {
+                setXmlPayload(e.target.value);
+                limparResultados();
+              }}
+              placeholder={`Cole aqui o XML de requisição do Registro Online (${
+                bancoRegistroOnline === "caixa" ? "Caixa" : "BB"
+              }).`}
               className="h-64 w-full rounded-lg border border-line bg-surface p-4 font-mono text-sm text-ink focus:border-brand"
             />
           ) : (
@@ -222,7 +217,14 @@ export default function ValidadorCnabPage() {
               <span className="text-sm text-muted">
                 {arquivo ? arquivo.name : "Clique para escolher o arquivo de remessa/retorno (TXT/RET)"}
               </span>
-              <input type="file" className="hidden" onChange={(e) => { setArquivo(e.target.files?.[0] ?? null); limparResultados(); }} />
+              <input
+                type="file"
+                className="hidden"
+                onChange={(e) => {
+                  setArquivo(e.target.files?.[0] ?? null);
+                  limparResultados();
+                }}
+              />
             </label>
           )}
         </div>
@@ -236,7 +238,6 @@ export default function ValidadorCnabPage() {
           >
             {carregando ? "Validando..." : "Validar Estrutura"}
           </button>
-
           {tipoValidacao === "240" && (
             <button
               onClick={corrigir}
@@ -246,7 +247,6 @@ export default function ValidadorCnabPage() {
               {carregando ? "Corrigindo..." : "Corrigir automaticamente"}
             </button>
           )}
-
           {correcao && (
             <button
               onClick={baixarCorrigido}
@@ -289,18 +289,16 @@ export default function ValidadorCnabPage() {
             ))}
           </div>
         )}
-
       </div>
     </main>
   );
 }
 
-// Componentes auxiliares restaurados
 function ResumoValidacao({ valido, totalErros }: { valido: boolean; totalErros: number }) {
   if (valido) {
     return (
       <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
-        Validação concluída — nenhum erro estrutural encontrado.
+        Validação concluída: nenhum erro estrutural encontrado.
       </div>
     );
   }
@@ -320,7 +318,8 @@ function ErroItem({ erro, tipo }: { erro: ErroValidacao; tipo: string }) {
         )}
         {tipo !== "registro_online" && erro.posicao_inicio !== null && erro.posicao_inicio !== undefined && (
           <span className="font-mono text-xs text-muted">
-            pos. {erro.posicao_inicio}{erro.posicao_fim !== erro.posicao_inicio ? `-${erro.posicao_fim}` : ""}
+            pos. {erro.posicao_inicio}
+            {erro.posicao_fim !== erro.posicao_inicio ? `-${erro.posicao_fim}` : ""}
           </span>
         )}
         {tipo === "registro_online" && erro.campo && (

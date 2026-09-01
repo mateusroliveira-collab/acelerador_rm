@@ -1,38 +1,20 @@
 """
 Base de conhecimento de erros da Caixa Econômica Federal.
-
-Três tabelas SEPARADAS de propósito -- são contextos diferentes, com
-códigos que podem colidir entre si (ex: código "01" significa coisas
-diferentes em cada tabela):
-
-  - ERROS_REJEICAO_RETORNO_400: motivo de rejeição no arquivo de RETORNO
-    do CNAB 400 (Nota Explicativa NE032, posições 80-82 do registro
-    detalhe). É a mais parecida com o cenário do BB -- um erro que volta
-    depois que a Caixa processou.
-  - ERROS_CRITICA_REMESSA_400: erro de formatação encontrado ANTES de
-    processar, no arquivo de Pré-Crítica do CNAB 400 (NE038). Ajuda a
-    pegar problema de formatação do próprio arquivo de remessa.
-  - ERROS_REJEICAO_ENTRADA_240: motivos de rejeição de entrada no CNAB
-    240 (fonte: artigo de suporte TOTVS, lista parcial).
-
-`buscar_erro()` usa ERROS_REJEICAO_RETORNO_400 como padrão (é o cenário
-mais comum de "traduzir erro do banco"). As outras duas ficam disponíveis
-pra quando o front-end tiver um seletor de contexto.
-
-Fonte NE032/NE038: manual oficial "Leiaute de Arquivo Eletrônico Padrão
-CNAB 400 -- Cobrança Bancária CAIXA - SIGCB", documento 67.126 v003 micro.
-"sugestao_rm" fica como PENDENTE até alguém confirmar, na prática, onde
-cada erro corresponde no RM.
+Contém as soluções mapeadas pela equipe para o ERP TOTVS RM.
 """
 
 _PENDENTE = "PENDENTE -- preencher quando confirmado na prática."
 
 # --------------------------------------------------------------------
-# NE032 -- Código de Motivo de Ocorrência (rejeição no RETORNO, CNAB 400)
+# NE032 -- Código de Motivo de Ocorrência (rejeição no RETORNO, CNAB 400 e Registro Online)
 # --------------------------------------------------------------------
 ERROS_REJEICAO_RETORNO_400: dict[str, dict[str, str]] = {
     "01": {"mensagem_banco": "Movimento sem Beneficiário Correspondente", "causa_provavel": "O código do beneficiário informado não corresponde a nenhum cadastro na CAIXA.", "sugestao_rm": _PENDENTE},
-    "02": {"mensagem_banco": "Movimento sem Título Correspondente", "causa_provavel": "O movimento se refere a um título que a CAIXA não tem registrado.", "sugestao_rm": _PENDENTE},
+    "02": {
+        "mensagem_banco": "NOSSO NUMERO INVALIDO", 
+        "causa_provavel": "O Nosso Número gerado pelo RM está fora do padrão esperado pela Caixa.", 
+        "sugestao_rm": "Acessar módulo Gestão Financeira > Movimentações Bancárias > Controle Bancário > Banco e Agências > Filtrar o banco do boleto > anexo > layout bancário > Revisar o conteúdo do campo 'nosso número', após ajuste retornar no menu de boleto para registrar novamente."
+    },
     "08": {"mensagem_banco": "Movimento para Título já com Movimentação no Dia", "causa_provavel": "Já foi enviado outro movimento para esse mesmo título no mesmo dia.", "sugestao_rm": _PENDENTE},
     "09": {"mensagem_banco": "Nosso Número não Pertence ao Beneficiário", "causa_provavel": "O Nosso Número informado está associado a outro beneficiário, não a este.", "sugestao_rm": _PENDENTE},
     "10": {"mensagem_banco": "Inclusão de Título já Existente na Base", "causa_provavel": "Mesma família de erro do exemplo do BB -- o título/Nosso Número já foi registrado antes.", "sugestao_rm": _PENDENTE},
@@ -41,6 +23,11 @@ ERROS_REJEICAO_RETORNO_400: dict[str, dict[str, str]] = {
     "20": {"mensagem_banco": "CEP do Pagador Não Encontrado", "causa_provavel": "Não foi possível determinar a agência cobradora a partir do CEP informado.", "sugestao_rm": _PENDENTE},
     "21": {"mensagem_banco": "Agência Cobradora Não Encontrada", "causa_provavel": "A agência designada para cobrança não está cadastrada no sistema da CAIXA.", "sugestao_rm": _PENDENTE},
     "22": {"mensagem_banco": "Agência do Beneficiário Não Encontrada", "causa_provavel": "A agência do beneficiário não está cadastrada no sistema da CAIXA.", "sugestao_rm": _PENDENTE},
+    "35": {
+        "mensagem_banco": "BENEFICIARIO INFORMADO NAO CADASTRADO", 
+        "causa_provavel": "O código do convênio/cedente não foi enviado ou está incorreto.", 
+        "sugestao_rm": "Acessar módulo Gestão Financeira > Movimentações Bancárias > Controle Bancário > Convênio > Filtrar o Convênio do boleto > anexo > layout bancário > Informar o código do convênio no campo 'Código cedente', após ajuste retornar no menu de boleto para registrar novamente."
+    },
     "45": {"mensagem_banco": "Data de Vencimento com Prazo Superior ao Limite", "causa_provavel": "A data de vencimento informada está além do prazo máximo aceito pela CAIXA.", "sugestao_rm": _PENDENTE},
     "49": {"mensagem_banco": "Movimento Inválido para Título Baixado/Liquidado", "causa_provavel": "Foi enviado um movimento para um título que já foi baixado ou liquidado.", "sugestao_rm": _PENDENTE},
     "50": {"mensagem_banco": "Movimento Inválido para Título Enviado a Cartório", "causa_provavel": "Foi enviado um movimento incompatível com um título que já está em processo de protesto.", "sugestao_rm": _PENDENTE},
@@ -52,7 +39,11 @@ ERROS_REJEICAO_RETORNO_400: dict[str, dict[str, str]] = {
     "59": {"mensagem_banco": "Novo Prazo para Protesto/Devolução Inválido", "causa_provavel": "O novo prazo informado para protesto ou devolução está fora do intervalo aceito.", "sugestao_rm": _PENDENTE},
     "76": {"mensagem_banco": "Alteração do Prazo de Protesto Inválida", "causa_provavel": "A alteração solicitada no prazo de protesto não é permitida nesse contexto.", "sugestao_rm": _PENDENTE},
     "77": {"mensagem_banco": "Alteração do Prazo de Devolução Inválida", "causa_provavel": "A alteração solicitada no prazo de devolução não é permitida nesse contexto.", "sugestao_rm": _PENDENTE},
-    "81": {"mensagem_banco": "CEP do Pagador Inválido", "causa_provavel": "O CEP informado para o pagador não é um CEP válido.", "sugestao_rm": _PENDENTE},
+    "81": {
+        "mensagem_banco": "CEP do Pagador Não Informado ou Inválido", 
+        "causa_provavel": "O CEP informado para o pagador não é um CEP válido ou está vazio.", 
+        "sugestao_rm": "Acessar módulo Gestão Financeira > Cadastros > Especificos > Clientes / Fornecedores > Filtrar o cliente do boleto > editar > Revisar o conteúdo do campo 'cep' , após ajustes, retornar no menu de boleto para registrar novamente."
+    },
     "82": {"mensagem_banco": "CNPJ/CPF do Pagador Inválido (dígito não confere)", "causa_provavel": "O documento do pagador tem o dígito verificador incorreto.", "sugestao_rm": _PENDENTE},
     "83": {"mensagem_banco": "Número do Documento (Seu Número) Inválido", "causa_provavel": "O campo 'Seu Número' enviado não está num formato aceito.", "sugestao_rm": _PENDENTE},
     "84": {"mensagem_banco": "Protesto Inválido para Título sem Número do Documento", "causa_provavel": "Foi solicitado protesto para um título sem o 'Seu Número' preenchido, que é obrigatório nesse caso.", "sugestao_rm": _PENDENTE},
@@ -157,7 +148,6 @@ ERROS_REJEICAO_ENTRADA_240: dict[str, dict[str, str]] = {
     "VB": {"mensagem_banco": "Registro Duplicado", "causa_provavel": "O mesmo registro já foi enviado antes -- parecido com o erro de Nosso Número duplicado do BB.", "sugestao_rm": _PENDENTE},
     "VC": {"mensagem_banco": "Beneficiário Deve Ser Padrão CNAB 240", "causa_provavel": "A operação exige beneficiário configurado como CNAB 240, mas o cadastro está diferente.", "sugestao_rm": _PENDENTE},
 }
-
 
 def buscar_erro(codigo: str, tabela: str = "retorno_400") -> dict[str, str] | None:
     """

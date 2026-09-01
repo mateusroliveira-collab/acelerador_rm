@@ -1,5 +1,5 @@
 """
-Rotas da API para o buscador de XML.
+Rotas da API para o buscador e higienizador de XML / MIT 41.
 
 Este arquivo NÃO é um entrypoint da Vercel -- é um módulo comum,
 importado pelo api/index.py através de app.include_router(). Toda a
@@ -37,10 +37,7 @@ def sugerir_grupo_por_mit41(corpo: TextoMit41):
     Recebe um trecho colado da saída do interpretador de MIT 41 -- pode
     ser UM movimento ou o documento INTEIRO com vários -- separa cada
     [INICIO_MOVIMENTO]...[FIM_MOVIMENTO], extrai os campos de cada um, e
-    devolve sugestões de grupo por movimento. Cada sugestão mostra os
-    sinais que levaram àquela pontuação (não é caixa preta), e um
-    movimento sem sinal suficiente vem com lista de sugestões vazia --
-    nunca inventa uma resposta fraca.
+    devolve sugestões de grupo por movimento.
     """
     blocos = separar_movimentos(corpo.texto)
     resultados = []
@@ -61,23 +58,19 @@ def sugerir_grupo_por_mit41(corpo: TextoMit41):
             status_code=400,
             detail="Não consegui reconhecer nenhum campo nesse texto. Confirma se é a saída do interpretador de MIT 41.",
         )
-    registrar_uso("mit41", "sugerir-grupo", {"total_movimentos": len(resultados)})
+    try:
+        registrar_uso("mit41", "sugerir-grupo", {"total_movimentos": len(resultados)})
+    except Exception:
+        pass
+
     return {"movimentos": resultados}
 
 
 @router.post("/pre-processar-mit41")
 async def pre_processar_mit41_bruto(arquivo: UploadFile = File(...)):
     """
-    Recebe o PDF BRUTO de um documento MIT 41 (sem nenhuma interpretação
-    de IA ainda), extrai o texto, e separa a estrutura que dá pra
-    extrair com confiabilidade real via regra pura: número e título do
-    subprocesso, caminho "Processo Relacionado", texto AS IS, texto TO BE
-    e a seção GAP.
-
-    Também devolve uma sugestão de grupo APROXIMADA por movimento (usando
-    só nome + processo relacionado + palavras-chave fiscais no TO BE) --
-    é mais fraca que a Ponte MIT 41 completa (que usa a saída já
-    interpretada pelo Gem), e isso fica marcado explicitamente.
+    Recebe o PDF BRUTO de um documento MIT 41, extrai o texto e separa a
+    estrutura confiável via regras puras.
     """
     import pdfplumber
     import io
@@ -101,12 +94,13 @@ async def pre_processar_mit41_bruto(arquivo: UploadFile = File(...)):
             detail="O PDF não retornou texto (pode ser um PDF escaneado/imagem, sem texto selecionável).",
         )
 
-    # Índice via geometria da tabela (confiável) em vez de regex sobre
-    # texto linear (que embaralha quando célula de descrição quebra em
-    # várias linhas -- testado e confirmado contra documento real).
     indice = extrair_indice_de_tabelas(tabelas)
     subprocessos = pre_processar_documento(texto, indice_pre_extraido=indice)
-    registrar_uso("mit41", "pre-processar", {"total_subprocessos": len(subprocessos)})
+    try:
+        registrar_uso("mit41", "pre-processar", {"total_subprocessos": len(subprocessos)})
+    except Exception:
+        pass
+
     return {
         "texto_para_ponte": gerar_texto_para_ponte(subprocessos),
         "subprocessos": [
@@ -130,12 +124,7 @@ async def pre_processar_mit41_bruto(arquivo: UploadFile = File(...)):
 
 @router.post("/limpar-avulso")
 async def limpar_xml_avulso(arquivo: UploadFile = File(...)):
-    """
-    Higieniza um XML enviado na hora, SEM salvar em lugar nenhum -- nem
-    no banco, nem na pasta. Serve pra quem só quer limpar um XML de
-    outro projeto/uso pontual, sem contribuir ele pra base compartilhada
-    (isso é uma ação separada, ver /enviar).
-    """
+    """Higieniza um XML enviado na hora, SEM salvar no banco ou disco."""
     conteudo_bytes = await arquivo.read()
     try:
         conteudo_original = conteudo_bytes.decode("utf-8-sig")
@@ -148,7 +137,11 @@ async def limpar_xml_avulso(arquivo: UploadFile = File(...)):
     xml_limpo, campos_zerados = limpar_xml(conteudo_original)
     nome_saida = (arquivo.filename or "arquivo").rsplit(".", 1)[0] + "_LIMPO.xml"
 
-    registrar_uso("xml", "limpar-avulso", {"campos_zerados": campos_zerados})
+    try:
+        registrar_uso("xml", "limpar-avulso", {"campos_zerados": campos_zerados})
+    except Exception:
+        pass
+
     return Response(
         content=xml_limpo,
         media_type="application/xml",
@@ -161,12 +154,7 @@ async def limpar_xml_avulso(arquivo: UploadFile = File(...)):
 
 @router.post("/enviar")
 async def enviar_xml_personalizado(grupo: str, arquivo: UploadFile = File(...)):
-    """
-    Recebe um XML que o próprio usuário quer usar como referência, fora
-    da base padrão. Higieniza ele igual aos arquivos normais, e guarda
-    original + higienizado no banco (não tem como virar arquivo
-    persistente na pasta -- ver docstring de XmlPersonalizado).
-    """
+    """Recebe um XML de referência do usuário e guarda higienizado no banco."""
     if not config.grupo_existe(grupo):
         raise HTTPException(status_code=404, detail=f"Grupo '{grupo}' não encontrado.")
 
@@ -203,13 +191,17 @@ async def enviar_xml_personalizado(grupo: str, arquivo: UploadFile = File(...)):
     finally:
         db.close()
 
-    registrar_uso("xml", "enviar-personalizado", {"grupo": grupo, "arquivo": arquivo.filename})
+    try:
+        registrar_uso("xml", "enviar-personalizado", {"grupo": grupo, "arquivo": arquivo.filename})
+    except Exception:
+        pass
+
     return {"id": novo_id, "arquivo": arquivo.filename, "campos_zerados": campos_zerados}
 
 
 @router.get("/baixar-personalizado/{xml_id}")
 def baixar_xml_personalizado(xml_id: int):
-    """Baixa a versão já higienizada de um XML personalizado, pelo id."""
+    """Baixa a versão já higienizada de um XML personalizado pelo ID."""
     db = SessionLocal()
     try:
         registro = db.query(XmlPersonalizado).filter(XmlPersonalizado.id == xml_id).first()
@@ -232,7 +224,7 @@ def baixar_xml_personalizado(xml_id: int):
 
 @router.get("/grupos")
 def listar_grupos():
-    """Devolve a lista de grupos de movimento disponíveis (pro dropdown do front)."""
+    """Devolve a lista de grupos de movimento disponíveis."""
     return [
         {
             "codigo": codigo,
@@ -245,7 +237,7 @@ def listar_grupos():
 
 @router.get("/buscar")
 def buscar_arquivos(grupo: str, busca: str = ""):
-    """Lista os XMLs de um grupo, opcionalmente filtrados por um termo no nome."""
+    """Lista os XMLs de um grupo, filtrando opcionalmente por nome."""
     if not config.grupo_existe(grupo):
         raise HTTPException(status_code=404, detail=f"Grupo '{grupo}' não encontrado.")
 
@@ -263,10 +255,6 @@ def buscar_arquivos(grupo: str, busca: str = ""):
         if f.suffix.lower() == ".xml" and termo in f.stem.lower()
     )
 
-    # XMLs enviados por usuários pra esse grupo (guardados no banco --
-    # não têm como virar arquivo persistente na pasta, ver docstring de
-    # XmlPersonalizado). Se o banco falhar por qualquer motivo, a busca
-    # normal continua funcionando -- só sem os personalizados dessa vez.
     personalizados = []
     try:
         db = SessionLocal()
@@ -284,13 +272,17 @@ def buscar_arquivos(grupo: str, busca: str = ""):
         pass
 
     resultado = [{"nome": nome, "personalizado": False} for nome in arquivos_pasta] + personalizados
-    registrar_uso("xml", "buscar", {"grupo": grupo, "busca": termo, "total_encontrado": len(resultado)})
+    try:
+        registrar_uso("xml", "buscar", {"grupo": grupo, "busca": termo, "total_encontrado": len(resultado)})
+    except Exception:
+        pass
+
     return {"grupo": grupo, "arquivos": resultado}
 
 
 @router.post("/limpar")
 def limpar_arquivo(grupo: str, arquivo: str):
-    """Higieniza um XML específico e devolve o resultado pronto pra download."""
+    """Higieniza um XML específico da base fixa e devolve para download."""
     if not config.grupo_existe(grupo):
         raise HTTPException(status_code=404, detail=f"Grupo '{grupo}' não encontrado.")
 
@@ -302,7 +294,11 @@ def limpar_arquivo(grupo: str, arquivo: str):
     xml_limpo, campos_zerados = limpar_xml(conteudo_original)
 
     nome_saida = caminho.stem + "_LIMPO.xml"
-    registrar_uso("xml", "limpar", {"grupo": grupo, "arquivo": arquivo, "campos_zerados": campos_zerados})
+    try:
+        registrar_uso("xml", "limpar", {"grupo": grupo, "arquivo": arquivo, "campos_zerados": campos_zerados})
+    except Exception:
+        pass
+
     return Response(
         content=xml_limpo,
         media_type="application/xml",

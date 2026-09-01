@@ -1,3 +1,6 @@
+"""
+Rota da API para validação direta de XML de Registro Online da Caixa (SIGCB).
+"""
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -23,9 +26,13 @@ def validar_caixa_xml_route(corpo: XmlCaixa):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    registrar_uso(
-        "registro_online",
-        "validar-caixa-xml",
-        {"valido": resultado.valido, "total_erros": len(resultado.erros)},
-    )
+    try:
+        registrar_uso(
+            "registro_online",
+            "validar-caixa-xml",
+            {"valido": resultado.valido, "total_erros": len(resultado.erros)},
+        )
+    except Exception:
+        pass
+
     return resultado.to_dict()
