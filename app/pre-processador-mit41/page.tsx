@@ -63,9 +63,9 @@ export default function PreProcessadorMit41Page() {
           Interpretador de MIT 41
         </h1>
         <p className="mt-3 max-w-2xl text-muted">
-          Submeta o PDF <strong>bruto</strong> do MIT 41 e organiza os subprocessos numa tabela -- via regra pura.
-          Cada linha já vem com uma sugestão aproximada de grupo de XML,
-          e mostra onde está a interpretação de negócio.
+          Submeta o arquivos PDF da MIT041 - Especificação dos Processos e organize os subprocessos 
+          em uma tabela por regra de negócio / processo. As linhas trazem uma sugestão do grupo de 
+          XML de tipo de movimento e mostram a localização da interpretação da regra de negócio.
         </p>
 
         <div className="mt-8">
