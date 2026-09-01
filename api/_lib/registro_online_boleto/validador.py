@@ -36,6 +36,7 @@ class ErroBoleto:
 class ResultadoValidacaoBoleto:
     valido: bool
     erros: list[ErroBoleto] = field(default_factory=list)
+    avisos: list[str] = field(default_factory=list)
 
     def to_dict(self):
         return {
@@ -49,6 +50,7 @@ class ResultadoValidacaoBoleto:
                 }
                 for e in self.erros
             ],
+            "avisos": self.avisos,
         }
 
 
