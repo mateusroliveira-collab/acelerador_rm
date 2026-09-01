@@ -49,7 +49,7 @@ GRUPOS: dict[str, dict[str, str | None]] = {
         ),
     },
     "2.2": {
-        "pasta": "Movimento do tipo 2.2",
+        "pasta": "Movimentos do tipo 2.2",
         "label": "Nota Fiscal de Saída",
         "descricao": (
             "Faturamento efetivo -- notas fiscais de venda, prestação de "
@@ -58,7 +58,7 @@ GRUPOS: dict[str, dict[str, str | None]] = {
         ),
     },
     "3.1": {
-        "pasta": "Movimento do tipo 3.1",
+        "pasta": "Movimentos do tipo 3.1",
         "label": "Transferência entre Filiais/Locais",
         "descricao": (
             "Movimentação física de mercadoria entre locais de estoque ou "
@@ -68,7 +68,7 @@ GRUPOS: dict[str, dict[str, str | None]] = {
         ),
     },
     "4.1": {
-        "pasta": "Movimento do tipo 4.1",
+        "pasta": "Movimentos do tipo 4.1",
         "label": "Movimento Interno de Estoque",
         "descricao": (
             "Movimentações internas, sem cliente ou fornecedor externo -- "
@@ -79,14 +79,12 @@ GRUPOS: dict[str, dict[str, str | None]] = {
     },
 }
 
-
 def pasta_do_grupo(grupo: str) -> Path:
     """Caminho da pasta de um grupo específico dentro da base de XMLs."""
     info = GRUPOS.get(grupo)
     if info is None:
         raise ValueError(f"Grupo desconhecido: {grupo}")
     return XML_BASE_DIR / info["pasta"]
-
 
 def grupo_existe(grupo: str) -> bool:
     """Confere se o código do grupo é um dos conhecidos."""
