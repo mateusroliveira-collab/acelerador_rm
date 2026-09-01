@@ -32,7 +32,7 @@ export default function HomePage() {
       <div className="mx-auto max-w-4xl">
         <Header />
         <h1 className="mt-6 font-display text-4xl font-bold text-ink md:text-5xl">
-          Acelerador de implantação SPUB com IA
+          Aceleradores de implantação SPUB com IA
         </h1>
         <p className="mt-3 max-w-xl text-muted">
           Agentes aceleraradores
