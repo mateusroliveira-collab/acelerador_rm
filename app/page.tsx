@@ -78,10 +78,10 @@ export default function HomePage() {
               {/* Usando grid com 4 colunas para distribuir o espaçamento por igual */}
               <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
                 {[
-                  { nome: "Adonias", inicial: "A" },
-                  { nome: "Bento", inicial: "B" },
-                  { nome: "Mateus", inicial: "M" },
-                  { nome: "Moises", inicial: "M" },
+                  { nome: "Adonias Ferreira", inicial: "A" },
+                  { nome: "Mateus Rodrigues de Oliveira", inicial: "M" },
+                  { nome: "Moises Alexandre Dos Santos ", inicial: "M" },
+                  { nome: "Wanderson Etelvino Bento ", inicial: "W" },
                 ].map((membro) => (
                   <div key={membro.nome} className="flex items-center gap-2.5 transition hover:opacity-80">
                     <div className="flex h-7 w-7 items-center justify-center rounded-full bg-brand/10 text-xs font-bold text-brand-light">
@@ -108,7 +108,7 @@ export default function HomePage() {
                 <div className="flex h-7 w-7 items-center justify-center rounded-full bg-action/10 text-xs font-bold text-action">
                   R
                 </div>
-                <span className="text-sm font-medium text-ink">Rodrigo</span>
+                <span className="text-sm font-medium text-ink">Rodrigo Silveira do Amaral</span>
               </div>
             </div>
 
