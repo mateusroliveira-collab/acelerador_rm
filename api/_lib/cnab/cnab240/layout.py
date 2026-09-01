@@ -248,12 +248,131 @@ SEGMENTO_R: list[CampoLayout] = [
     CampoLayout("Aviso para Débito Automático", 231, 231, "num", obrigatorio=False),
     CampoLayout("Uso Exclusivo FEBRABAN/CNAB", 232, 240, "alfa", obrigatorio=False),
 ]
+# Segmento J -- Pagamento de Títulos / Boletos
+SEGMENTO_J: list[CampoLayout] = [
+    CampoLayout("Código do Banco na Compensação", 1, 3, "num"),
+    CampoLayout("Lote de Serviço", 4, 7, "num"),
+    CampoLayout("Tipo de Registro", 8, 8, "num", valor_fixo="3"),
+    CampoLayout("Número Sequencial do Registro no Lote", 9, 13, "num"),
+    CampoLayout("Código de Segmento do Registro Detalhe", 14, 14, "alfa", valor_fixo="J"),
+    CampoLayout("Tipo de Movimento", 15, 15, "num"),
+    CampoLayout("Código da Instrução para Movimento", 16, 17, "num"),
+    CampoLayout("Código de Barras", 18, 61, "alfa"),
+    CampoLayout("Nome do Beneficiário", 62, 91, "alfa", obrigatorio=False),
+    CampoLayout("Data de Vencimento", 92, 99, "num"),
+    CampoLayout("Valor Nominal do Título", 100, 114, "num"),
+    CampoLayout("Valor do Desconto + Abatimento", 115, 129, "num", obrigatorio=False),
+    CampoLayout("Valor da Mora + Multa", 130, 144, "num", obrigatorio=False),
+    CampoLayout("Data do Pagamento", 145, 152, "num"),
+    CampoLayout("Valor do Pagamento", 153, 167, "num"),
+    CampoLayout("Quantidade da Moeda", 168, 182, "num", obrigatorio=False),
+    CampoLayout("Referência Pagador (Seu Número)", 183, 202, "alfa", obrigatorio=False),
+    CampoLayout("Nosso Número atribuído pelo Banco", 203, 222, "alfa", obrigatorio=False),
+    CampoLayout("Código da Moeda", 223, 224, "num", obrigatorio=False),
+    CampoLayout("Uso Exclusivo FEBRABAN/CNAB", 225, 230, "alfa", obrigatorio=False),
+    CampoLayout("Códigos das Ocorrências para Retorno", 231, 240, "alfa", obrigatorio=False),
+]
 
+# Segmento J52 -- Complemento do J (Dados do Pagador/Beneficiário e FGTS Digital)
+SEGMENTO_J52: list[CampoLayout] = [
+    CampoLayout("Código do Banco na Compensação", 1, 3, "num"),
+    CampoLayout("Lote de Serviço", 4, 7, "num"),
+    CampoLayout("Tipo de Registro", 8, 8, "num", valor_fixo="3"),
+    CampoLayout("Número Sequencial do Registro no Lote", 9, 13, "num"),
+    CampoLayout("Código de Segmento do Registro Detalhe", 14, 14, "alfa", valor_fixo="J"),
+    CampoLayout("Uso Exclusivo FEBRABAN/CNAB", 15, 15, "alfa", obrigatorio=False),
+    CampoLayout("Código de Movimento Remessa", 16, 17, "num"),
+    CampoLayout("Identificação Registro Opcional", 18, 19, "num", valor_fixo="52"),
+    CampoLayout("Tipo de Inscrição do Pagador", 20, 20, "num"),
+    CampoLayout("Número de Inscrição do Pagador", 21, 35, "num"),
+    CampoLayout("Nome do Pagador", 36, 75, "alfa"),
+    CampoLayout("Tipo de Inscrição do Beneficiário", 76, 76, "num"),
+    CampoLayout("Número de Inscrição do Beneficiário", 77, 91, "num"),
+    CampoLayout("Nome do Beneficiário", 92, 131, "alfa"),
+    CampoLayout("Tipo Inscrição Avalista / URL FGTS Digital", 132, 132, "alfa", obrigatorio=False),
+    CampoLayout("Num Inscrição Avalista / URL FGTS Digital", 133, 147, "alfa", obrigatorio=False),
+    CampoLayout("Nome Avalista / URL FGTS Digital", 148, 187, "alfa", obrigatorio=False),
+    CampoLayout("Uso Exclusivo FEBRABAN/CNAB", 188, 240, "alfa", obrigatorio=False),
+]
+
+# Segmento N -- Pagamento de Tributos S/ Código de Barras (GPS, DARF, GARE)
+SEGMENTO_N: list[CampoLayout] = [
+    CampoLayout("Código do Banco na Compensação", 1, 3, "num"),
+    CampoLayout("Lote de Serviço", 4, 7, "num"),
+    CampoLayout("Tipo de Registro", 8, 8, "num", valor_fixo="3"),
+    CampoLayout("Número Sequencial do Registro no Lote", 9, 13, "num"),
+    CampoLayout("Código de Segmento do Registro Detalhe", 14, 14, "alfa", valor_fixo="N"),
+    CampoLayout("Tipo de Movimento", 15, 15, "num"),
+    CampoLayout("Código da Instrução para Movimento", 16, 17, "num"),
+    CampoLayout("Seu Número", 18, 37, "alfa", obrigatorio=False),
+    CampoLayout("Nosso Número", 38, 57, "alfa", obrigatorio=False),
+    CampoLayout("Nome do Contribuinte", 58, 87, "alfa"),
+    CampoLayout("Data do Pagamento", 88, 95, "num"),
+    CampoLayout("Valor do Pagamento", 96, 110, "num"),
+    CampoLayout("Informações Complementares do Tributo", 111, 230, "alfa", obrigatorio=False),
+    CampoLayout("Códigos das Ocorrências para Retorno", 231, 240, "alfa", obrigatorio=False),
+]
+
+# Segmento O -- Pagamento de Tributos/Concessionárias C/ Código de Barras
+SEGMENTO_O: list[CampoLayout] = [
+    CampoLayout("Código do Banco na Compensação", 1, 3, "num"),
+    CampoLayout("Lote de Serviço", 4, 7, "num"),
+    CampoLayout("Tipo de Registro", 8, 8, "num", valor_fixo="3"),
+    CampoLayout("Número Sequencial do Registro no Lote", 9, 13, "num"),
+    CampoLayout("Código de Segmento do Registro Detalhe", 14, 14, "alfa", valor_fixo="O"),
+    CampoLayout("Tipo de Movimento", 15, 15, "num"),
+    CampoLayout("Código da Instrução para Movimento", 16, 17, "num"),
+    CampoLayout("Código de Barras", 18, 61, "alfa"),
+    CampoLayout("Nome da Concessionária/Órgão Público", 62, 91, "alfa", obrigatorio=False),
+    CampoLayout("Data de Vencimento", 92, 99, "num"),
+    CampoLayout("Data do Pagamento", 100, 107, "num"),
+    CampoLayout("Valor do Pagamento", 108, 122, "num"),
+    CampoLayout("Seu Número", 123, 142, "alfa", obrigatorio=False),
+    CampoLayout("Nosso Número", 143, 162, "alfa", obrigatorio=False),
+    CampoLayout("Uso Exclusivo FEBRABAN/CNAB", 163, 230, "alfa", obrigatorio=False),
+    CampoLayout("Códigos das Ocorrências para Retorno", 231, 240, "alfa", obrigatorio=False),
+]
+
+# Segmento W -- Informações Complementares (ex: Rateio, FGTS)
+SEGMENTO_W: list[CampoLayout] = [
+    CampoLayout("Código do Banco na Compensação", 1, 3, "num"),
+    CampoLayout("Lote de Serviço", 4, 7, "num"),
+    CampoLayout("Tipo de Registro", 8, 8, "num", valor_fixo="3"),
+    CampoLayout("Número Sequencial do Registro no Lote", 9, 13, "num"),
+    CampoLayout("Código de Segmento do Registro Detalhe", 14, 14, "alfa", valor_fixo="W"),
+    CampoLayout("Número Sequencial do Registro Complementar", 15, 15, "num"),
+    CampoLayout("Identifica Uso da Informação", 16, 16, "alfa", obrigatorio=False),
+    CampoLayout("Informação Complementar 1", 17, 96, "alfa", obrigatorio=False),
+    CampoLayout("Informação Complementar 2", 97, 176, "alfa", obrigatorio=False),
+    CampoLayout("Identificador do Tributo", 177, 178, "alfa", obrigatorio=False),
+    CampoLayout("Informação Complementar do Tributo", 179, 228, "alfa", obrigatorio=False),
+    CampoLayout("Uso Exclusivo FEBRABAN/CNAB", 229, 230, "alfa", obrigatorio=False),
+    CampoLayout("Códigos das Ocorrências para Retorno", 231, 240, "alfa", obrigatorio=False),
+]
+
+# Segmento Z -- Autenticação Bancária (Retorno de Pagamento)
+SEGMENTO_Z: list[CampoLayout] = [
+    CampoLayout("Código do Banco na Compensação", 1, 3, "num"),
+    CampoLayout("Lote de Serviço", 4, 7, "num"),
+    CampoLayout("Tipo de Registro", 8, 8, "num", valor_fixo="3"),
+    CampoLayout("Número Sequencial do Registro no Lote", 9, 13, "num"),
+    CampoLayout("Código de Segmento do Registro Detalhe", 14, 14, "alfa", valor_fixo="Z"),
+    CampoLayout("Autenticação para Atender Legislação", 15, 78, "alfa", obrigatorio=False),
+    CampoLayout("Autenticação Bancária/Protocolo", 79, 103, "alfa", obrigatorio=False),
+    CampoLayout("Uso Exclusivo FEBRABAN/CNAB", 104, 230, "alfa", obrigatorio=False),
+    CampoLayout("Códigos das Ocorrências para Retorno", 231, 240, "alfa", obrigatorio=False),
+]
 # Dicionário de despacho: código do segmento (posição 14) -> layout
 SEGMENTOS: dict[str, list[CampoLayout]] = {
     "A": SEGMENTO_A,
     "B": SEGMENTO_B,
+    "J": SEGMENTO_J,
+    "J52": SEGMENTO_J52,
+    "N": SEGMENTO_N,
+    "O": SEGMENTO_O,
     "P": SEGMENTO_P,
     "Q": SEGMENTO_Q,
     "R": SEGMENTO_R,
+    "W": SEGMENTO_W,
+    "Z": SEGMENTO_Z,
 }
