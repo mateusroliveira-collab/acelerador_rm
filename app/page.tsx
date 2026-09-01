@@ -64,28 +64,27 @@ export default function HomePage() {
           ))}
         </div>
 
-        {/* FOOTER ELEGANTE PREMIUM */}
-        <footer className="mt-24 mb-12 rounded-2xl border border-line bg-surface/50 p-6 shadow-sm md:p-8">
-          <div className="flex flex-col gap-10 md:flex-row md:items-start md:justify-between">
+{/* FOOTER ELEGANTE PREMIUM (Minimalista) */}
+        <footer className="mt-24 mb-12 rounded-2xl border border-line bg-surface/50 px-6 py-5 shadow-sm md:px-8">
+          <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
             
             {/* Time Técnico */}
             <div className="flex-1">
-              <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-muted">
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <h3 className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted">
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
                 </svg>
                 Time Técnico
               </h3>
-              <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <div className="mt-3 flex flex-wrap gap-4 sm:gap-6">
                 {[
-                  { nome: "Adonias", inicial: "A" },
+                  { nome: "Adoninas", inicial: "A" },
                   { nome: "Bento", inicial: "B" },
                   { nome: "Mateus", inicial: "M" },
                   { nome: "Moises", inicial: "M" },
-                  
                 ].map((membro) => (
-                  <div key={membro.nome} className="flex items-center gap-3 transition hover:opacity-80">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand/10 text-xs font-bold text-brand-light">
+                  <div key={membro.nome} className="flex items-center gap-2.5 transition hover:opacity-80">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-brand/10 text-xs font-bold text-brand-light">
                       {membro.inicial}
                     </div>
                     <span className="text-sm font-medium text-ink">{membro.nome}</span>
@@ -98,15 +97,15 @@ export default function HomePage() {
             <div className="h-px w-full bg-line md:hidden"></div>
 
             {/* Coordenação */}
-            <div className="md:w-64 md:border-l md:border-line md:pl-8">
-              <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-muted">
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <div className="md:border-l md:border-line md:pl-6">
+              <h3 className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted">
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                 </svg>
                 Coordenação
               </h3>
-              <div className="mt-5 flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-action/10 text-xs font-bold text-action">
+              <div className="mt-3 flex items-center gap-2.5">
+                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-action/10 text-xs font-bold text-action">
                   R
                 </div>
                 <span className="text-sm font-medium text-ink">Rodrigo</span>
