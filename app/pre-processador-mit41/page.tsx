@@ -60,7 +60,7 @@ export default function PreProcessadorMit41Page() {
       <div className="mx-auto max-w-5xl">
         <Header />
         <h1 className="mt-6 font-display text-4xl font-bold text-ink md:text-5xl">
-          Interpretador de MIT 41
+          Interpretador de MIT 041
         </h1>
         <p className="mt-3 max-w-2xl text-muted">
           Submeta o arquivos PDF da MIT041 - Especificação dos Processos e organize os subprocessos 
