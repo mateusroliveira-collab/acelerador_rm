@@ -18,20 +18,12 @@ type ErroValidacao = {
 type ResultadoValidacao = {
   valido: boolean;
   erros: ErroValidacao[];
+  avisos?: string[];
 };
 
 type Correcao = {
-  linha: number;
-  posicao_inicio: number;
-  posicao_fim: number;
-  campo: string;
-  valor_antigo: string;
-  valor_novo: string;
-};
-
-type ResultadoCorrecao = {
   conteudo_corrigido: string;
-  correcoes_aplicadas: Correcao[];
+  correcoes_aplicadas: unknown[];
   erros_restantes: ErroValidacao[];
   total_corrigido: number;
   total_pendente: number;
@@ -47,16 +39,15 @@ const BANCOS = [
 ];
 
 export default function ValidadorCnabPage() {
-  const [tipoValidacao, setTipoValidacao] = useState<"240" | "400" | "json">("240");
+  const [tipoValidacao, setTipoValidacao] = useState<"240" | "400" | "registro_online">("240");
   const [bancoCnab400, setBancoCnab400] = useState("generico");
-  const [bancoJson, setBancoJson] = useState("bb");
-  
+
   const [arquivo, setArquivo] = useState<File | null>(null);
-  const [jsonPayload, setJsonPayload] = useState("");
+  const [xmlPayload, setXmlPayload] = useState("");
   const [carregando, setCarregando] = useState(false);
-  
+
   const [resultado, setResultado] = useState<ResultadoValidacao | null>(null);
-  const [correcao, setCorrecao] = useState<ResultadoCorrecao | null>(null);
+  const [correcao, setCorrecao] = useState<Correcao | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
   const [bancoTradutor, setBancoTradutor] = useState("bb");
@@ -78,36 +69,27 @@ export default function ValidadorCnabPage() {
 
     try {
       let resposta;
-      
-      if (tipoValidacao === "json") {
-        if (!jsonPayload.trim()) {
-          setErro("Cole o payload JSON gerado pelo RM.");
+
+      if (tipoValidacao === "registro_online") {
+        if (!xmlPayload.trim()) {
+          setErro("Cole o XML de requisição gerado pelo RM para o Registro Online da Caixa.");
           setCarregando(false);
           return;
         }
 
-        let payloadObj;
-        try {
-          payloadObj = JSON.parse(jsonPayload);
-        } catch {
-          setErro("O texto colado não é um JSON válido. Verifique a formatação.");
-          setCarregando(false);
-          return;
-        }
-
-        const rota = bancoJson === "caixa" ? "/api/cnab/validar-json-caixa" : "/api/cnab/validar-json-bb";
-        resposta = await fetch(rota, {
+        // Só a Caixa está disponível por enquanto -- a API de Registro
+        // Online do BB ainda não foi documentada/testada nesse projeto.
+        resposta = await fetch("/api/registro-online/validar-caixa-xml", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payloadObj),
+          body: JSON.stringify({ xml: xmlPayload }),
         });
-
       } else {
         if (!arquivo) {
           setCarregando(false);
           return;
         }
-        
+
         const formData = new FormData();
         formData.append("arquivo", arquivo);
 
@@ -121,12 +103,17 @@ export default function ValidadorCnabPage() {
         resposta = await fetch(rota, { method: "POST", body: formData });
       }
 
-      if (!resposta.ok) throw new Error();
-
       const dados = await resposta.json();
+
+      if (!resposta.ok) {
+        setErro(dados?.detail || "Não foi possível processar a validação.");
+        setCarregando(false);
+        return;
+      }
+
       setResultado(dados);
     } catch {
-      setErro("Não foi possível processar a validação. O arquivo/JSON pode estar mal formatado.");
+      setErro("Não foi possível processar a validação. O arquivo/XML pode estar mal formatado.");
     } finally {
       setCarregando(false);
     }
@@ -147,7 +134,7 @@ export default function ValidadorCnabPage() {
       });
       if (!resposta.ok) throw new Error();
 
-      const dados: ResultadoCorrecao = await resposta.json();
+      const dados: Correcao = await resposta.json();
       setCorrecao(dados);
     } catch {
       setErro("Não foi possível corrigir o arquivo.");
@@ -196,6 +183,7 @@ export default function ValidadorCnabPage() {
   }
 
   const errosParaMostrar = resultado?.erros ?? correcao?.erros_restantes ?? [];
+  const avisosParaMostrar = resultado?.avisos ?? [];
 
   return (
     <main className="min-h-screen px-6 py-12 md:px-12 lg:px-20">
@@ -203,15 +191,16 @@ export default function ValidadorCnabPage() {
         <Header />
 
         <h1 className="mt-6 font-display text-4xl font-bold text-ink md:text-5xl">
-          Validador Universal (TXT / API JSON)
+          Validador Universal (TXT / Registro Online)
         </h1>
         <p className="mt-3 max-w-xl text-muted">
-          Valide arquivos de remessa/retorno (240 e 400) ou a estrutura de JSONs do Registro Online gerados pelo TOTVS RM.
+          Valide arquivos de remessa/retorno (240 e 400) ou o XML de
+          Registro Online gerado pelo TOTVS RM.
         </p>
 
         {/* Seletor de tipo */}
         <div className="mt-10 flex flex-wrap gap-3">
-          {(["240", "400", "json"] as const).map((tipo) => (
+          {(["240", "400", "registro_online"] as const).map((tipo) => (
             <button
               key={tipo}
               onClick={() => {
@@ -224,12 +213,12 @@ export default function ValidadorCnabPage() {
                   : "border-line bg-surface text-ink hover:border-brand"
               }`}
             >
-              {tipo === "json" ? "Registro Online (JSON)" : `CNAB ${tipo}`}
+              {tipo === "registro_online" ? "Registro Online (XML, Caixa)" : `CNAB ${tipo}`}
             </button>
           ))}
         </div>
 
-        {/* Seletor de banco (CNAB 400 e JSON) */}
+        {/* Seletor de banco (CNAB 400) */}
         {tipoValidacao === "400" && (
           <div className="mt-3">
             <label className="text-xs text-muted">Banco Específico</label>
@@ -245,27 +234,23 @@ export default function ValidadorCnabPage() {
           </div>
         )}
 
-        {tipoValidacao === "json" && (
-          <div className="mt-3">
-            <label className="text-xs text-muted">API do Banco</label>
-            <select
-              value={bancoJson}
-              onChange={(e) => { setBancoJson(e.target.value); limparResultados(); }}
-              className="mt-1 block rounded-lg border border-line bg-surface px-4 py-2 text-sm text-ink focus:border-brand"
-            >
-              <option value="bb">Banco do Brasil (API Cobrança)</option>
-              <option value="caixa">Caixa (API Cobrança)</option>
-            </select>
-          </div>
+        {tipoValidacao === "registro_online" && (
+          <p className="mt-3 rounded-md border border-dashed border-line bg-surface px-4 py-3 text-xs text-muted">
+            Só a <strong>Caixa</strong> está disponível aqui por enquanto
+            -- a API de Registro Online do BB ainda não foi documentada
+            neste projeto. Cola um trecho do XML (não precisa ser o
+            envelope completo, um fragmento com `&lt;DADOS&gt;...&lt;/DADOS&gt;`
+            já funciona).
+          </p>
         )}
 
         {/* Input area (Upload ou Textarea) */}
         <div className="mt-6">
-          {tipoValidacao === "json" ? (
+          {tipoValidacao === "registro_online" ? (
             <textarea
-              value={jsonPayload}
-              onChange={(e) => { setJsonPayload(e.target.value); limparResultados(); }}
-              placeholder={`Cole aqui o JSON de requisição gerado pelo RM para o ${bancoJson === 'caixa' ? 'registro da Caixa' : 'registro do BB'}.`}
+              value={xmlPayload}
+              onChange={(e) => { setXmlPayload(e.target.value); limparResultados(); }}
+              placeholder="Cole aqui o XML de requisição do Registro Online da Caixa (operação INCLUI_BOLETO)."
               className="h-64 w-full rounded-lg border border-line bg-surface p-4 font-mono text-sm text-ink focus:border-brand"
             />
           ) : (
@@ -282,7 +267,7 @@ export default function ValidadorCnabPage() {
         <div className="mt-4 flex gap-3">
           <button
             onClick={validar}
-            disabled={carregando || (tipoValidacao !== "json" && !arquivo)}
+            disabled={carregando || (tipoValidacao !== "registro_online" && !arquivo)}
             className="rounded-md bg-action px-4 py-2 text-sm font-medium text-white transition hover:bg-action-hover disabled:opacity-50"
           >
             {carregando ? "Validando..." : "Validar Estrutura"}
@@ -295,6 +280,15 @@ export default function ValidadorCnabPage() {
               className="rounded-md border border-line px-4 py-2 text-sm font-medium text-ink transition hover:border-brand disabled:opacity-50"
             >
               {carregando ? "Corrigindo..." : "Corrigir automaticamente"}
+            </button>
+          )}
+
+          {correcao && (
+            <button
+              onClick={baixarCorrigido}
+              className="rounded-md border border-line px-4 py-2 text-sm font-medium text-ink transition hover:border-brand"
+            >
+              Baixar corrigido
             </button>
           )}
         </div>
@@ -311,7 +305,21 @@ export default function ValidadorCnabPage() {
           </div>
         )}
 
-        {/* Lista de erros (compartilhada entre validação, json e correção) */}
+        {/* Avisos -- informativo, não é erro (ex: juros de mora informado) */}
+        {avisosParaMostrar.length > 0 && (
+          <div className="mt-4 space-y-2">
+            {avisosParaMostrar.map((aviso, idx) => (
+              <p
+                key={idx}
+                className="rounded-md border border-dashed border-action/50 bg-action/10 px-4 py-3 text-sm text-ink"
+              >
+                {aviso}
+              </p>
+            ))}
+          </div>
+        )}
+
+        {/* Lista de erros (compartilhada entre validação, registro online e correção) */}
         {errosParaMostrar.length > 0 && (
           <div className="mt-4 divide-y divide-line rounded-lg border border-line bg-surface">
             {errosParaMostrar.map((e, idx) => (
@@ -326,7 +334,7 @@ export default function ValidadorCnabPage() {
             Traduzir erro do banco (Dica RM)
           </h2>
           <p className="mt-2 max-w-xl text-sm text-muted">
-            O banco rejeitou o arquivo ou o JSON? Cole o código e a mensagem do banco abaixo para receber a dica de onde corrigir no TOTVS RM.
+            O banco rejeitou o arquivo ou o Registro Online? Cole o código e a mensagem do banco abaixo para receber a dica de onde corrigir no TOTVS RM.
           </p>
 
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
@@ -412,16 +420,16 @@ function ErroItem({ erro, tipo }: { erro: ErroValidacao; tipo: string }) {
   return (
     <div className="px-4 py-3">
       <div className="flex flex-wrap items-center gap-2">
-        {tipo !== "json" && erro.linha !== null && erro.linha !== undefined && (
+        {tipo !== "registro_online" && erro.linha !== null && erro.linha !== undefined && (
           <span className="font-mono text-xs text-muted">Linha {erro.linha}</span>
         )}
-        {tipo !== "json" && erro.posicao_inicio !== null && erro.posicao_inicio !== undefined && (
+        {tipo !== "registro_online" && erro.posicao_inicio !== null && erro.posicao_inicio !== undefined && (
           <span className="font-mono text-xs text-muted">
             pos. {erro.posicao_inicio}{erro.posicao_fim !== erro.posicao_inicio ? `-${erro.posicao_fim}` : ""}
           </span>
         )}
-        {tipo === "json" && erro.campo && (
-          <span className="font-mono text-xs text-brand-light font-bold">Chave JSON: {erro.campo}</span>
+        {tipo === "registro_online" && erro.campo && (
+          <span className="font-mono text-xs font-bold text-brand-light">Campo: {erro.campo}</span>
         )}
         {erro.corrigivel_automaticamente && (
           <span className="rounded-full bg-brand/20 px-2 py-0.5 text-[10px] font-medium text-brand-light">
