@@ -191,7 +191,7 @@ export default function ValidadorCnabPage() {
         <Header />
 
         <h1 className="mt-6 font-display text-4xl font-bold text-ink md:text-5xl">
-          Validador Cnab e Registro Online
+          Validador CNAB e Registro Online
         </h1>
         <p className="mt-3 max-w-xl text-muted">
           Valide arquivos de remessa/retorno (240 e 400) ou o XML de
@@ -213,7 +213,7 @@ export default function ValidadorCnabPage() {
                   : "border-line bg-surface text-ink hover:border-brand"
               }`}
             >
-              {tipo === "registro_online" ? "Registro Online (XML, Caixa)" : `CNAB ${tipo}`}
+              {tipo === "registro_online" ? "Registro Online (Caixa)" : `CNAB ${tipo}`}
             </button>
           ))}
         </div>
@@ -236,11 +236,7 @@ export default function ValidadorCnabPage() {
 
         {tipoValidacao === "registro_online" && (
           <p className="mt-3 rounded-md border border-dashed border-line bg-surface px-4 py-3 text-xs text-muted">
-            Só a <strong>Caixa</strong> está disponível aqui por enquanto
-            -- a API de Registro Online do BB ainda não foi documentada
-            neste projeto. Cola um trecho do XML (não precisa ser o
-            envelope completo, um fragmento com `&lt;DADOS&gt;...&lt;/DADOS&gt;`
-            já funciona).
+            Só a <strong>Caixa</strong> está disponível aqui por enquanto.
           </p>
         )}
 
@@ -250,7 +246,7 @@ export default function ValidadorCnabPage() {
             <textarea
               value={xmlPayload}
               onChange={(e) => { setXmlPayload(e.target.value); limparResultados(); }}
-              placeholder="Cole aqui o XML de requisição do Registro Online da Caixa (operação INCLUI_BOLETO)."
+              placeholder="Cole aqui o XML de requisição do Registro Online da Caixa ."
               className="h-64 w-full rounded-lg border border-line bg-surface p-4 font-mono text-sm text-ink focus:border-brand"
             />
           ) : (
