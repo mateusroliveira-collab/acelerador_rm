@@ -6,8 +6,7 @@ const ferramentas = [
     href: "/pre-processador-mit41",
     codigo: "01",
     titulo: "Interpretador de MIT 41",
-    descricao:
-      "Organiza o MIT 41 bruto em subprocessos via regra pura.",
+    descricao: "Organiza o MIT 41 bruto em subprocessos via regra pura.",
     disponivel: true,
   },
   {
@@ -35,7 +34,7 @@ export default function HomePage() {
           Aceleradores de implantação SPUB com IA
         </h1>
         <p className="mt-3 max-w-xl text-muted">
-          Agentes aceleraradores
+          Agentes aceleradores
         </p>
 
         <div className="mt-10 grid gap-4 sm:grid-cols-3">
@@ -63,6 +62,35 @@ export default function HomePage() {
             </Link>
           ))}
         </div>
+
+        {/* FOOTER ELEGANTE */}
+        <footer className="mt-24 border-t border-line pt-10 pb-12">
+          <div className="flex flex-col gap-8 md:flex-row md:justify-between">
+            {/* Time Técnico */}
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-muted">
+                Time Técnico Responsável
+              </h3>
+              <ul className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm text-ink">
+                <li className="font-medium">Adoninas (Nome Completo)</li>
+                <li className="font-medium">Mateus</li>
+                <li className="font-medium">Moises</li>
+                <li className="font-medium">Wanderson Bento</li>
+              </ul>
+            </div>
+
+            {/* Coordenação */}
+            <div className="md:text-right">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-muted">
+                Coordenação
+              </h3>
+              <p className="mt-4 text-sm font-medium text-ink">
+                Rodrigo
+              </p>
+            </div>
+          </div>
+        </footer>
+
       </div>
     </main>
   );
