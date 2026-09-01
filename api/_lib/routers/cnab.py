@@ -156,20 +156,45 @@ async def validar_xml_caixa(payload: PayloadXML):
                     return elem.text
             return None
 
+        # Mapeamento de campos obrigatórios com caminhos exatos do TOTVS RM
         campos_obrigatorios = {
-            "CODIGO_BENEFICIARIO": ("35", "Verifique o Convênio/Código do Cedente preenchido no RM."),
-            "NOSSO_NUMERO": ("02", "Verifique a geração do Nosso Número no boleto."),
-            "DATA_VENCIMENTO": ("45", "O boleto não possui data de vencimento preenchida."),
-            "VALOR": ("27", "O valor do título está zerado ou vazio."),
-            "CEP": ("81", "O CEP do cliente é obrigatório para registro na Caixa."),
-            "CIDADE": ("45", "A cidade do cliente não está preenchida no cadastro."),
+            "CODIGO_BENEFICIARIO": (
+                "35", 
+                "Gestão Financeira > Movimentações Bancárias > Controle Bancário > Convênio > Filtrar Convênio > Anexos > Layout Bancário > Ajustar Código Cedente."
+            ),
+            "NOSSO_NUMERO": (
+                "02", 
+                "Gestão Financeira > Movimentações Bancárias > Controle Bancário > Banco e Agências > Filtrar Banco > Anexos > Layout Bancário > Revisar faixa do Nosso Número."
+            ),
+            "DATA_VENCIMENTO": (
+                "45", 
+                "Gestão Financeira > Contas a Receber > Lançamentos > Filtrar Título > Editar > Ajustar a Data de Vencimento."
+            ),
+            "VALOR": (
+                "27", 
+                "Gestão Financeira > Contas a Receber > Lançamentos > Filtrar Título > Editar > Ajustar o Valor Original do Título."
+            ),
+            "CEP": (
+                "81", 
+                "Gestão Financeira > Cadastros > Específicos > Clientes / Fornecedores > Filtrar Cliente > Editar > Aba Endereço > Preencher CEP."
+            ),
+            "CIDADE": (
+                "45", 
+                "Gestão Financeira > Cadastros > Específicos > Clientes / Fornecedores > Filtrar Cliente > Editar > Aba Endereço > Preencher a Cidade."
+            ),
         }
 
         for tag, (codigo_erro, sugestao_padrao) in campos_obrigatorios.items():
             valor = get_tag_text(tag)
             if not valor or not valor.strip():
                 dica_bento = buscar_erro(codigo_erro)
-                sugestao = dica_bento["sugestao_rm"] if dica_bento else sugestao_padrao
+                
+                # Garante que não exiba a string 'PENDENTE' na interface
+                if dica_bento and dica_bento.get("sugestao_rm") and "PENDENTE" not in dica_bento["sugestao_rm"]:
+                    sugestao = dica_bento["sugestao_rm"]
+                else:
+                    sugestao = sugestao_padrao
+
                 erros.append({
                     "mensagem": f"Tag obrigatória <{tag}> não encontrada ou vazia no XML. Erro Bancário Previsto: ({codigo_erro})",
                     "campo": f"<{tag}>",
@@ -177,11 +202,16 @@ async def validar_xml_caixa(payload: PayloadXML):
                     "sugestao_rm": sugestao
                 })
 
+        # Validação do Nosso Número Caixa (deve ter 17 dígitos e começar com 14)
         nosso_numero = get_tag_text("NOSSO_NUMERO")
         if nosso_numero and nosso_numero.strip():
             if len(nosso_numero) == 17 and not nosso_numero.startswith("14"):
                 dica_bento = buscar_erro("24", tabela="critica_remessa_400")
-                sugestao = dica_bento["sugestao_rm"] if dica_bento else "Prefixo inválido. Deve iniciar com '14'."
+                sugestao = (
+                    dica_bento["sugestao_rm"] 
+                    if dica_bento and "PENDENTE" not in dica_bento["sugestao_rm"] 
+                    else "Gestão Financeira > Movimentações Bancárias > Controle Bancário > Banco e Agências > Anexos > Layout Bancário > Alterar Modalidade/Prefixo para '14'."
+                )
                 erros.append({
                     "mensagem": "Prefixo do Nosso Número inválido para Cobrança Registrada na Caixa.",
                     "campo": "<NOSSO_NUMERO>",
@@ -189,6 +219,7 @@ async def validar_xml_caixa(payload: PayloadXML):
                     "sugestao_rm": sugestao
                 })
 
+        # Validação do Documento do Pagador
         cpf = get_tag_text("CPF")
         cnpj = get_tag_text("CNPJ")
         if (not cpf or not cpf.strip()) and (not cnpj or not cnpj.strip()):
@@ -196,7 +227,7 @@ async def validar_xml_caixa(payload: PayloadXML):
                 "mensagem": "É obrigatório enviar CPF ou CNPJ do pagador.",
                 "campo": "<CPF> ou <CNPJ>",
                 "valor_encontrado": "Nenhum",
-                "sugestao_rm": "Acessar módulo Gestão Financeira > Cadastros > Específicos > Clientes / Fornecedores > Filtrar o cliente > Editar > Preencher CPF/CNPJ."
+                "sugestao_rm": "Gestão Financeira > Cadastros > Específicos > Clientes / Fornecedores > Filtrar Cliente > Editar > Aba Identificação > Preencher CPF/CNPJ."
             })
 
     except ET.ParseError as e:
