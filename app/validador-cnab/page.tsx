@@ -29,18 +29,10 @@ type Correcao = {
   total_pendente: number;
 };
 
-const BANCOS = [
-  { codigo: "bb", nome: "Banco do Brasil" },
-  { codigo: "caixa", nome: "Caixa" },
-  { codigo: "bradesco", nome: "Bradesco" },
-  { codigo: "itau", nome: "Itaú" },
-  { codigo: "santander", nome: "Santander" },
-  { codigo: "sicoob", nome: "Sicoob" },
-];
-
 export default function ValidadorCnabPage() {
   const [tipoValidacao, setTipoValidacao] = useState<"240" | "400" | "registro_online">("240");
   const [bancoCnab400, setBancoCnab400] = useState("generico");
+  const [bancoRegistroOnline, setBancoRegistroOnline] = useState("caixa");
 
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [xmlPayload, setXmlPayload] = useState("");
@@ -49,13 +41,6 @@ export default function ValidadorCnabPage() {
   const [resultado, setResultado] = useState<ResultadoValidacao | null>(null);
   const [correcao, setCorrecao] = useState<Correcao | null>(null);
   const [erro, setErro] = useState<string | null>(null);
-
-  const [bancoTradutor, setBancoTradutor] = useState("bb");
-  const [tabelaErro, setTabelaErro] = useState("retorno_400");
-  const [codigoErro, setCodigoErro] = useState("");
-  const [mensagemErro, setMensagemErro] = useState("");
-  const [traducao, setTraducao] = useState<ErroValidacao | null>(null);
-  const [traduzindo, setTraduzindo] = useState(false);
 
   function limparResultados() {
     setResultado(null);
@@ -72,14 +57,16 @@ export default function ValidadorCnabPage() {
 
       if (tipoValidacao === "registro_online") {
         if (!xmlPayload.trim()) {
-          setErro("Cole o XML de requisição gerado pelo RM para o Registro Online da Caixa.");
+          setErro("Cole o XML de requisição gerado pelo RM para o Registro Online.");
           setCarregando(false);
           return;
         }
 
-        // Só a Caixa está disponível por enquanto -- a API de Registro
-        // Online do BB ainda não foi documentada/testada nesse projeto.
-        resposta = await fetch("/api/registro-online/validar-caixa-xml", {
+        const rotaXml = bancoRegistroOnline === "caixa" 
+          ? "/api/cnab/validar-xml-caixa" 
+          : "/api/cnab/validar-xml-bb";
+
+        resposta = await fetch(rotaXml, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ xml: xmlPayload }),
@@ -154,34 +141,6 @@ export default function ValidadorCnabPage() {
     URL.revokeObjectURL(url);
   }
 
-  async function traduzirErro() {
-    if (!codigoErro) return;
-    setTraduzindo(true);
-    setTraducao(null);
-
-    try {
-      const params = new URLSearchParams({
-        banco: bancoTradutor,
-        codigo_erro: codigoErro,
-        mensagem: mensagemErro,
-      });
-
-      if (bancoTradutor === "caixa") {
-        params.set("tabela", tabelaErro);
-      }
-
-      const resposta = await fetch(`/api/cnab/traduzir-erro?${params}`, { method: "POST" });
-      if (!resposta.ok) throw new Error();
-
-      const dados = await resposta.json();
-      setTraducao(dados);
-    } catch {
-      setErro("Não foi possível traduzir o erro.");
-    } finally {
-      setTraduzindo(false);
-    }
-  }
-
   const errosParaMostrar = resultado?.erros ?? correcao?.erros_restantes ?? [];
   const avisosParaMostrar = resultado?.avisos ?? [];
 
@@ -191,10 +150,10 @@ export default function ValidadorCnabPage() {
         <Header />
 
         <h1 className="mt-6 font-display text-4xl font-bold text-ink md:text-5xl">
-          Validador CNAB e Registro Online
+          Validador de CNAB e Registro Online
         </h1>
         <p className="mt-3 max-w-xl text-muted">
-          Valide arquivos de remessa/retorno (240 e 400) ou o XML de
+          Valida arquivos de remessa/retorno (240 e 400) e XML de
           Registro Online gerado pelo TOTVS RM.
         </p>
 
@@ -213,7 +172,7 @@ export default function ValidadorCnabPage() {
                   : "border-line bg-surface text-ink hover:border-brand"
               }`}
             >
-              {tipo === "registro_online" ? "Registro Online (Caixa)" : `CNAB ${tipo}`}
+              {tipo === "registro_online" ? "Registro Online (XML)" : `CNAB ${tipo}`}
             </button>
           ))}
         </div>
@@ -234,19 +193,28 @@ export default function ValidadorCnabPage() {
           </div>
         )}
 
+        {/* Seletor de banco (Registro Online) */}
         {tipoValidacao === "registro_online" && (
-          <p className="mt-3 rounded-md border border-dashed border-line bg-surface px-4 py-3 text-xs text-muted">
-            Só a <strong>Caixa</strong> está disponível aqui por enquanto.
-          </p>
+          <div className="mt-3">
+            <label className="text-xs text-muted">API do Banco</label>
+            <select
+              value={bancoRegistroOnline}
+              onChange={(e) => { setBancoRegistroOnline(e.target.value); limparResultados(); }}
+              className="mt-1 block rounded-lg border border-line bg-surface px-4 py-2 text-sm text-ink focus:border-brand"
+            >
+              <option value="caixa">Caixa Econômica (API Cobrança)</option>
+              <option value="bb">Banco do Brasil (API Cobrança)</option>
+            </select>
+          </div>
         )}
 
-        {/* Input area (Upload ou Textarea) */}
+        {/* Input area */}
         <div className="mt-6">
           {tipoValidacao === "registro_online" ? (
             <textarea
               value={xmlPayload}
               onChange={(e) => { setXmlPayload(e.target.value); limparResultados(); }}
-              placeholder="Cole aqui o XML de requisição do Registro Online da Caixa ."
+              placeholder={`Cole aqui o XML de requisição do Registro Online (${bancoRegistroOnline === 'caixa' ? 'Caixa' : 'BB'}).`}
               className="h-64 w-full rounded-lg border border-line bg-surface p-4 font-mono text-sm text-ink focus:border-brand"
             />
           ) : (
@@ -301,7 +269,6 @@ export default function ValidadorCnabPage() {
           </div>
         )}
 
-        {/* Avisos -- informativo, não é erro (ex: juros de mora informado) */}
         {avisosParaMostrar.length > 0 && (
           <div className="mt-4 space-y-2">
             {avisosParaMostrar.map((aviso, idx) => (
@@ -315,7 +282,6 @@ export default function ValidadorCnabPage() {
           </div>
         )}
 
-        {/* Lista de erros (compartilhada entre validação, registro online e correção) */}
         {errosParaMostrar.length > 0 && (
           <div className="mt-4 divide-y divide-line rounded-lg border border-line bg-surface">
             {errosParaMostrar.map((e, idx) => (
@@ -324,84 +290,17 @@ export default function ValidadorCnabPage() {
           </div>
         )}
 
-        {/* Tradutor de erro de banco (API Online e CNAB Retorno) */}
-        <div className="mt-16 border-t border-line pt-8">
-          <h2 className="font-display text-2xl font-bold text-ink">
-            Traduzir erro do banco (Dica RM)
-          </h2>
-          <p className="mt-2 max-w-xl text-sm text-muted">
-            O banco rejeitou o arquivo ou o Registro Online? Cole o código e a mensagem do banco abaixo para receber a dica de onde corrigir no TOTVS RM.
-          </p>
-
-          <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            <select
-              value={bancoTradutor}
-              onChange={(e) => setBancoTradutor(e.target.value)}
-              className="rounded-lg border border-line bg-surface px-4 py-3 text-ink focus:border-brand"
-            >
-              {BANCOS.map((b) => (
-                <option key={b.codigo} value={b.codigo}>{b.nome}</option>
-              ))}
-            </select>
-            <input
-              type="text"
-              value={codigoErro}
-              onChange={(e) => setCodigoErro(e.target.value)}
-              placeholder="Código do erro (ex: 4874915 ou 02)"
-              className="rounded-lg border border-line bg-surface px-4 py-3 text-ink placeholder:text-muted focus:border-brand"
-            />
-          </div>
-
-          {bancoTradutor === "caixa" && (
-            <select
-              value={tabelaErro}
-              onChange={(e) => setTabelaErro(e.target.value)}
-              className="mt-3 w-full rounded-lg border border-line bg-surface px-4 py-3 text-sm text-ink focus:border-brand"
-            >
-              <option value="retorno_400">Rejeição no retorno (CNAB 400)</option>
-              <option value="critica_remessa_400">Crítica da remessa (CNAB 400, pré-crítica)</option>
-              <option value="entrada_240">Rejeição de entrada (CNAB 240)</option>
-            </select>
-          )}
-
-          <input
-            type="text"
-            value={mensagemErro}
-            onChange={(e) => setMensagemErro(e.target.value)}
-            placeholder="Mensagem do banco (opcional, ajuda se o código não for conhecido)"
-            className="mt-3 w-full rounded-lg border border-line bg-surface px-4 py-3 text-ink placeholder:text-muted focus:border-brand"
-          />
-
-          <button
-            onClick={traduzirErro}
-            disabled={!codigoErro || traduzindo}
-            className="mt-3 rounded-md bg-action px-4 py-2 text-sm font-medium text-white transition hover:bg-action-hover disabled:opacity-50"
-          >
-            {traduzindo ? "Traduzindo..." : "Traduzir"}
-          </button>
-
-          {traducao && (
-            <div className="mt-4 rounded-lg border border-line bg-surface p-4">
-              <p className="text-sm text-ink">{traducao.mensagem}</p>
-              {traducao.sugestao_rm && (
-                <p className="mt-2 text-sm text-muted">
-                  <span className="font-medium text-brand-light">Dica RM: </span>
-                  {traducao.sugestao_rm}
-                </p>
-              )}
-            </div>
-          )}
-        </div>
       </div>
     </main>
   );
 }
 
+// Componentes auxiliares restaurados
 function ResumoValidacao({ valido, totalErros }: { valido: boolean; totalErros: number }) {
   if (valido) {
     return (
       <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
-        Validação concluída -- nenhum erro estrutural encontrado.
+        Validação concluída — nenhum erro estrutural encontrado.
       </div>
     );
   }
