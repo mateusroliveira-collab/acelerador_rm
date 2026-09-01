@@ -1,7 +1,8 @@
 """
 Rotas da API para o validador de CNAB.
 """
-
+from pydantic import ValidationError
+from ..cnab.registro_online.schemas import SchemaBoletoCaixa, SchemaBoletoBB
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from ..cnab.cnab400.validador_bb import validar_cnab400_bb
 from ..cnab.cnab240.validador import validar_cnab240
@@ -91,3 +92,44 @@ async def validar_arquivo_cnab400_bb(arquivo: UploadFile = File(...)):
         return resultado.to_dict()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+@router.post("/validar-json-caixa")
+async def validar_json_caixa(payload: dict):
+    """Valida a estrutura de um JSON de Registro Online da Caixa Econômica."""
+    try:
+        SchemaBoletoCaixa(**payload)
+        return {"valido": True, "erros": []}
+    except ValidationError as e:
+        erros_formatados = []
+        for erro in e.errors():
+            campo = " -> ".join([str(loc) for loc in erro["loc"]])
+            erros_formatados.append({
+                "mensagem": f"Erro estrutural no JSON: {erro['msg']}",
+                "campo": campo,
+                "valor_encontrado": str(erro.get("input", "N/A")),
+                "sugestao_rm": "Verifique o mapeamento deste campo no cadastro da filial ou do cliente no RM."
+            })
+        
+        registrar_uso("registro_online", "validar-json-caixa", {"valido": False, "total_erros": len(erros_formatados)})
+        return {"valido": False, "erros": erros_formatados}
+
+
+@router.post("/validar-json-bb")
+async def validar_json_bb(payload: dict):
+    """Valida a estrutura de um JSON de Registro Online do Banco do Brasil."""
+    try:
+        SchemaBoletoBB(**payload)
+        return {"valido": True, "erros": []}
+    except ValidationError as e:
+        erros_formatados = []
+        for erro in e.errors():
+            campo = " -> ".join([str(loc) for loc in erro["loc"]])
+            erros_formatados.append({
+                "mensagem": f"Erro estrutural no JSON: {erro['msg']}",
+                "campo": campo,
+                "valor_encontrado": str(erro.get("input", "N/A")),
+                "sugestao_rm": "Verifique o mapeamento deste campo no cadastro da filial ou do cliente no RM."
+            })
+            
+        registrar_uso("registro_online", "validar-json-bb", {"valido": False, "total_erros": len(erros_formatados)})
+        return {"valido": False, "erros": erros_formatados}    
