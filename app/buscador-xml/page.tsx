@@ -189,7 +189,7 @@ export default function BuscadorXmlPage() {
         </h1>
         <p className="mt-3 max-w-xl text-muted">
           Selecione o tipo de movimento, encontre o template certo e gere a
-          versão higienizada, pronta para parametrização.
+          versão limpa pronta para parametrização.
         </p>
 
         {/* Limpeza avulsa -- pra qualquer XML de qualquer projeto, sem

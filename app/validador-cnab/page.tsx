@@ -191,7 +191,7 @@ export default function ValidadorCnabPage() {
         <Header />
 
         <h1 className="mt-6 font-display text-4xl font-bold text-ink md:text-5xl">
-          Validador Universal (TXT / Registro Online)
+          Validador Cnab e Registro Online
         </h1>
         <p className="mt-3 max-w-xl text-muted">
           Valide arquivos de remessa/retorno (240 e 400) ou o XML de
