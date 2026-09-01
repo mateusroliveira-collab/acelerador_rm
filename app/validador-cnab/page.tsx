@@ -72,18 +72,26 @@ export default function ValidadorCnabPage() {
     if (!arquivo) return;
     setCarregando(true);
     limparResultados();
+
     try {
       const formData = new FormData();
       formData.append("arquivo", arquivo);
+
       let rota = "/api/cnab/validar-240";
+      
       if (tipoCnab === "400") {
-        rota =
-          bancoCnab400 === "caixa"
-            ? "/api/cnab/validar-400-caixa"
-            : "/api/cnab/validar-400";
+        if (bancoCnab400 === "caixa") {
+          rota = "/api/cnab/validar-400-caixa";
+        } else if (bancoCnab400 === "bb") {
+          rota = "/api/cnab/validar-400-bb";
+        } else {
+          rota = "/api/cnab/validar-400";
+        }
       }
+
       const resposta = await fetch(rota, { method: "POST", body: formData });
       if (!resposta.ok) throw new Error();
+
       const dados = await resposta.json();
       setResultado(dados);
     } catch {
@@ -97,14 +105,17 @@ export default function ValidadorCnabPage() {
     if (!arquivo) return;
     setCarregando(true);
     limparResultados();
+
     try {
       const formData = new FormData();
       formData.append("arquivo", arquivo);
+
       const resposta = await fetch("/api/cnab/corrigir-240", {
         method: "POST",
         body: formData,
       });
       if (!resposta.ok) throw new Error();
+
       const dados: ResultadoCorrecao = await resposta.json();
       setCorrecao(dados);
     } catch {
@@ -133,19 +144,24 @@ export default function ValidadorCnabPage() {
     if (!codigoErro) return;
     setTraduzindo(true);
     setTraducao(null);
+
     try {
       const params = new URLSearchParams({
         banco,
         codigo_erro: codigoErro,
         mensagem: mensagemErro,
       });
+
       if (banco === "caixa") {
         params.set("tabela", tabelaErro);
       }
+
       const resposta = await fetch(`/api/cnab/traduzir-erro?${params}`, {
         method: "POST",
       });
+
       if (!resposta.ok) throw new Error();
+
       const dados = await resposta.json();
       setTraducao(dados);
     } catch {
@@ -161,6 +177,7 @@ export default function ValidadorCnabPage() {
     <main className="min-h-screen px-6 py-12 md:px-12 lg:px-20">
       <div className="mx-auto max-w-4xl">
         <Header />
+
         <h1 className="mt-6 font-display text-4xl font-bold text-ink md:text-5xl">
           Validador de CNAB
         </h1>
@@ -189,8 +206,7 @@ export default function ValidadorCnabPage() {
           ))}
         </div>
 
-        {/* Seletor de banco -- só faz sentido pro CNAB 400, onde a
-            validação de campo varia por banco. O 240 já é universal. */}
+        {/* Seletor de banco -- só faz sentido pro CNAB 400 */}
         {tipoCnab === "400" && (
           <div className="mt-3">
             <label className="text-xs text-muted">
@@ -205,6 +221,7 @@ export default function ValidadorCnabPage() {
               className="mt-1 block rounded-lg border border-line bg-surface px-4 py-2 text-sm text-ink focus:border-brand"
             >
               <option value="generico">Genérico (qualquer banco)</option>
+              <option value="bb">Banco do Brasil (campo a campo)</option>
               <option value="caixa">Caixa (campo a campo)</option>
             </select>
           </div>
@@ -238,6 +255,7 @@ export default function ValidadorCnabPage() {
           >
             {carregando ? "Validando..." : "Validar"}
           </button>
+
           {tipoCnab === "240" && (
             <button
               onClick={corrigir}
@@ -277,6 +295,7 @@ export default function ValidadorCnabPage() {
                 {correcao.total_pendente} pendente
                 {correcao.total_pendente === 1 ? "" : "s"}
               </span>
+
               {correcao.total_corrigido > 0 && (
                 <button
                   onClick={baixarCorrigido}
@@ -351,8 +370,7 @@ export default function ValidadorCnabPage() {
             />
           </div>
 
-          {/* A Caixa tem 3 tabelas de erro separadas (contextos
-              diferentes) -- os outros bancos ainda têm só uma. */}
+          {/* A Caixa tem 3 tabelas de erro separadas */}
           {banco === "caixa" && (
             <select
               value={tabelaErro}
@@ -370,6 +388,7 @@ export default function ValidadorCnabPage() {
               </option>
             </select>
           )}
+
           <input
             type="text"
             value={mensagemErro}

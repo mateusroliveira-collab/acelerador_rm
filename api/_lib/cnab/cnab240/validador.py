@@ -147,10 +147,15 @@ def validar_cnab240(conteudo: str) -> ResultadoValidacao:
                         linha=i,
                     )
                 )
-                continue
+                continue    
 
             codigo_segmento = texto_linha[13]  # posição 14
-            layout_segmento = SEGMENTOS.get(codigo_segmento)
+            
+            # TRUQUE PRO J52: Se for J, olha a posição 18 e 19 para ver se é o registro opcional 52
+            if codigo_segmento == "J" and texto_linha[17:19] == "52":
+                layout_segmento = SEGMENTOS.get("J52")
+            else:
+                layout_segmento = SEGMENTOS.get(codigo_segmento)
 
             if layout_segmento is not None:
                 erros += _validar_registro(i, texto_linha, layout_segmento)
