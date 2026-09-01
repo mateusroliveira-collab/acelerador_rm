@@ -2,8 +2,8 @@
 Rotas da API para o validador de CNAB.
 """
 
-from fastapi import APIRouter, UploadFile, File
-from api._lib.cnab.cnab400.validador_bb import validar_cnab400_bb
+from fastapi import APIRouter, UploadFile, File, HTTPException
+from ..cnab.cnab400.validador_bb import validar_cnab400_bb
 from ..cnab.cnab240.validador import validar_cnab240
 from ..cnab.cnab240.corretor import corrigir_cnab240
 from ..cnab.cnab400.validador import validar_cnab400
@@ -91,4 +91,3 @@ async def validar_arquivo_cnab400_bb(arquivo: UploadFile = File(...)):
         return resultado.to_dict()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    
