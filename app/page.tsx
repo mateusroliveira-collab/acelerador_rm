@@ -64,8 +64,7 @@ export default function HomePage() {
           ))}
         </div>
 
-{/* FOOTER ELEGANTE PREMIUM (Minimalista e Agrupado) */}
-        <footer className="mt-24 mb-12 rounded-2xl border border-line bg-surface/50 px-6 py-5 shadow-sm md:px-8">
+        <footer className="mt-24 mb-12 rounded-2xl border border-line bg-surface/50 px-6 py-6 shadow-sm md:px-8">
           <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
             
             {/* Time Técnico */}
@@ -76,8 +75,8 @@ export default function HomePage() {
                 </svg>
                 Time Técnico
               </h3>
-              {/* O segredo do agrupamento está aqui: flex flex-wrap gap-x-6 gap-y-3 */}
-              <div className="mt-3 flex flex-wrap gap-x-6 gap-y-3">
+              {/* Usando grid com 4 colunas para distribuir o espaçamento por igual */}
+              <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
                 {[
                   { nome: "Adonias", inicial: "A" },
                   { nome: "Bento", inicial: "B" },
@@ -98,14 +97,14 @@ export default function HomePage() {
             <div className="h-px w-full bg-line md:hidden"></div>
 
             {/* Coordenação */}
-            <div className="md:border-l md:border-line md:pl-6">
+            <div className="md:border-l md:border-line md:pl-8">
               <h3 className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted">
                 <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                 </svg>
                 Coordenação
               </h3>
-              <div className="mt-3 flex items-center gap-2.5">
+              <div className="mt-4 flex items-center gap-2.5">
                 <div className="flex h-7 w-7 items-center justify-center rounded-full bg-action/10 text-xs font-bold text-action">
                   R
                 </div>
