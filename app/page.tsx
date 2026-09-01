@@ -81,7 +81,7 @@ export default function HomePage() {
                   { nome: "Adoninas", inicial: "A" },
                   { nome: "Mateus", inicial: "M" },
                   { nome: "Moises", inicial: "M" },
-                  { nome: "Wanderson", inicial: "W" },
+                  { nome: "Wanderson Bento", inicial: "W" },
                 ].map((membro) => (
                   <div key={membro.nome} className="flex items-center gap-3 transition hover:opacity-80">
                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand/10 text-xs font-bold text-brand-light">
