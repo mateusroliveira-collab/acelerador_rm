@@ -6,15 +6,15 @@ import xml.etree.ElementTree as ET
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from pydantic import BaseModel
 
-from ..cnab240.validador_caixa import validar_cnab240_caixa
-from ..cnab240.validador_bb import validar_cnab240_bb
-from ..cnab240.validador import validar_cnab240
-from ..cnab240.corretor import corrigir_cnab240
-from ..cnab400.validador import validar_cnab400
-from ..cnab400.validador_caixa import validar_cnab400_caixa
-from ..cnab400.validador_bb import validar_cnab400_bb
-from ..registro_online.validador import traduzir_erro_banco
-from ..bancos.caixa import buscar_erro
+from ..cnab.cnab240.validador_caixa import validar_cnab240_caixa
+from ..cnab.cnab240.validador_bb import validar_cnab240_bb
+from ..cnab.cnab240.validador import validar_cnab240
+from ..cnab.cnab240.corretor import corrigir_cnab240
+from ..cnab.cnab400.validador import validar_cnab400
+from ..cnab.cnab400.validador_caixa import validar_cnab400_caixa
+from ..cnab.cnab400.validador_bb import validar_cnab400_bb
+from ..cnab.registro_online.validador import traduzir_erro_banco
+from ..cnab.bancos.caixa import buscar_erro
 from ..registro_uso import registrar_uso
 
 # Instância do roteador para o módulo CNAB
