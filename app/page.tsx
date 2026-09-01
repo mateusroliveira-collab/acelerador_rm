@@ -79,9 +79,10 @@ export default function HomePage() {
               <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
                 {[
                   { nome: "Adoninas", inicial: "A" },
+                  { nome: "Bento", inicial: "B" },
                   { nome: "Mateus", inicial: "M" },
                   { nome: "Moises", inicial: "M" },
-                  { nome: "Wanderson Bento", inicial: "W" },
+                  
                 ].map((membro) => (
                   <div key={membro.nome} className="flex items-center gap-3 transition hover:opacity-80">
                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand/10 text-xs font-bold text-brand-light">
