@@ -17,6 +17,7 @@ novo) -- nunca uma correção "silenciosa".
 from dataclasses import dataclass, field
 
 from ..erros import ErroValidacao
+from ..linhas import detectar_quebra_de_linha, ler_linhas
 from .validador import validar_cnab240
 
 
@@ -63,7 +64,8 @@ def corrigir_cnab240(conteudo: str) -> ResultadoCorrecao:
     exatamente como a validação normal apontaria.
     """
     resultado = validar_cnab240(conteudo)
-    linhas = conteudo.splitlines()
+    linhas = ler_linhas(conteudo)
+    quebra = detectar_quebra_de_linha(conteudo)
 
     correcoes: list[Correcao] = []
     erros_restantes: list[ErroValidacao] = []
@@ -100,8 +102,14 @@ def corrigir_cnab240(conteudo: str) -> ResultadoCorrecao:
 
         linhas[num_linha - 1] = "".join(caracteres)
 
+    # Preserva a quebra de linha original (banco costuma rejeitar arquivo
+    # CNAB que veio em CRLF e voltou só com LF) e a quebra final.
+    conteudo_corrigido = quebra.join(linhas)
+    if linhas and conteudo.endswith(("\n", "\r")):
+        conteudo_corrigido += quebra
+
     return ResultadoCorrecao(
-        conteudo_corrigido="\n".join(linhas),
+        conteudo_corrigido=conteudo_corrigido,
         correcoes_aplicadas=correcoes,
         erros_restantes=erros_restantes,
     )

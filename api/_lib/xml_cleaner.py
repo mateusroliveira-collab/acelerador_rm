@@ -1,8 +1,10 @@
 import logging
 import re
 
+# Sem logging.basicConfig aqui: módulo de biblioteca não deve configurar o
+# logging global (isso mudava o nível/formato de log da API inteira, só
+# por importar este arquivo). Quem configura é o servidor (uvicorn/Vercel).
 logger = logging.getLogger("XMLCleaner")
-logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 
 # Campos de amarração: identificadores do ambiente/cliente original que
 # precisam ser zerados para o XML virar um template genérico e reutilizável.

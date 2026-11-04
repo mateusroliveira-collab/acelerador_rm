@@ -63,11 +63,13 @@ _PADRAO_PROCESSO_RELACIONADO = re.compile(
     r"Processo Relacionado\s+([^\n]+?)(?=\s+Entrada de dados|\s+Descrição)"
 )
 
+# "GAP" com limite de palavra: com IGNORECASE e sem \b, qualquer palavra
+# contendo "gap" (ex: "Singapura") cortava o texto no meio.
 _PADRAO_AS_IS = re.compile(
-    r"AS IS:?\s*(.*?)(?=TO BE:|GAP|\Z)", re.DOTALL | re.IGNORECASE
+    r"AS IS:?\s*(.*?)(?=TO BE:|\bGAP\b|\Z)", re.DOTALL | re.IGNORECASE
 )
 _PADRAO_TO_BE = re.compile(
-    r"TO BE:?\s*(.*?)(?=GAP|\Z)", re.DOTALL | re.IGNORECASE
+    r"TO BE:?\s*(.*?)(?=\bGAP\b|\Z)", re.DOTALL | re.IGNORECASE
 )
 # Fronteira extra: para no próximo título de seção de nível 1 (ex: "5.
 # Processo Relacionado", "7. Aprovação"), não só em \Z -- sem isso, o GAP
@@ -229,11 +231,8 @@ def pre_processar_documento(
         blocos = separar_subprocessos_brutos(texto)
         return [processar_subprocesso(b) for b in blocos]
 
-    blocos_detalhe = separar_subprocessos_brutos(texto)
-    detalhe_por_numero = {
-        processar_subprocesso(b).numero: processar_subprocesso(b)
-        for b in blocos_detalhe
-    }
+    detalhes = [processar_subprocesso(b) for b in separar_subprocessos_brutos(texto)]
+    detalhe_por_numero = {d.numero: d for d in detalhes}
 
     resultado = []
     for item in indice:
@@ -259,6 +258,22 @@ _PALAVRAS_FISCAL_APROXIMADAS = [
 ]
 
 
+def _achar_palavra_fiscal(texto: str) -> re.Match | None:
+    """
+    Primeira palavra fiscal encontrada no texto, buscando com limite de
+    palavra (\\b) -- não com "in" simples. Palavras curtas tipo "iss" (ISS)
+    e "ipi" (IPI) são substring de palavras comuns em português
+    ("emissão", "município", "princípio") -- já mordeu isso uma vez com
+    "iss" dentro de "Emissão" em documento real.
+    """
+    texto_lower = texto.lower()
+    for palavra in _PALAVRAS_FISCAL_APROXIMADAS:
+        match = re.search(r"\b" + re.escape(palavra) + r"\b", texto_lower)
+        if match:
+            return match
+    return None
+
+
 def montar_campos_para_matcher(sp: SubProcesso) -> dict[str, str]:
     """
     Constrói um dicionário "parecido" com o que o interpretador de IA
@@ -271,21 +286,9 @@ def montar_campos_para_matcher(sp: SubProcesso) -> dict[str, str]:
     if sp.processo_relacionado:
         campos["PROCESSO_ORIGEM"] = sp.processo_relacionado
 
-    texto_to_be = (sp.texto_to_be or "").lower()
-    for palavra in _PALAVRAS_FISCAL_APROXIMADAS:
-        # Busca com limite de palavra (\b) -- não com "in" simples.
-        # Palavras curtas tipo "iss" (ISS) e "ipi" (IPI) são substring
-        # de palavras comuns em português ("emissão", "município",
-        # "princípio") -- já mordeu isso uma vez com "iss" dentro de
-        # "Emissão" em documento real. Limite de palavra resolve pra
-        # qualquer palavra da lista, atual ou futura.
-        if re.search(r"\b" + re.escape(palavra) + r"\b", texto_to_be):
-            match = re.search(r"\b" + re.escape(palavra) + r"\b", texto_to_be)
-            trecho_inicio = match.start()
-            campos["TRIBUTACAO"] = (sp.texto_to_be or "")[
-                trecho_inicio : trecho_inicio + 60
-            ]
-            break
+    match = _achar_palavra_fiscal(sp.texto_to_be or "")
+    if match:
+        campos["TRIBUTACAO"] = (sp.texto_to_be or "")[match.start() : match.start() + 60]
 
     return campos
 
@@ -303,12 +306,11 @@ def gerar_texto_para_ponte(subprocessos: list[SubProcesso]) -> str:
         linhas = ["[INICIO_MOVIMENTO]", f"NOME_MOVIMENTO={sp.titulo}"]
         if sp.processo_relacionado:
             linhas.append(f"PROCESSO_ORIGEM={sp.processo_relacionado}")
-        if sp.texto_to_be:
-            texto_to_be_lower = sp.texto_to_be.lower()
-            for palavra in _PALAVRAS_FISCAL_APROXIMADAS:
-                if palavra in texto_to_be_lower:
-                    linhas.append(f"TRIBUTACAO={sp.texto_to_be[:120]}")
-                    break
+        # Mesmo critério (com limite de palavra) de montar_campos_para_matcher --
+        # antes aqui era "in" simples, e "iss" dentro de "emissão" marcava
+        # efeito fiscal no texto da ponte mesmo quando a tabela não marcava.
+        if sp.texto_to_be and _achar_palavra_fiscal(sp.texto_to_be):
+            linhas.append(f"TRIBUTACAO={sp.texto_to_be[:120]}")
         linhas.append("[FIM_MOVIMENTO]")
         blocos.append("\n".join(linhas))
     return "\n\n".join(blocos)

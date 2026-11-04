@@ -14,7 +14,7 @@ from ..cnab.cnab400.validador import validar_cnab400
 from ..cnab.cnab400.validador_caixa import validar_cnab400_caixa
 from ..cnab.cnab400.validador_bb import validar_cnab400_bb
 from ..cnab.registro_online.validador import traduzir_erro_banco
-from ..cnab.bancos.caixa import buscar_erro
+from ..cnab.bancos.caixa import buscar_erro, sugestao_confirmada
 from ..registro_uso import registrar_uso
 
 # Instância do roteador para o módulo CNAB
@@ -93,7 +93,7 @@ async def validar_arquivo_400_caixa(arquivo: UploadFile = File(...)):
 
 @router.post("/validar-400-bb")
 async def validar_arquivo_cnab400_bb(arquivo: UploadFile = File(...)):
-    if not arquivo.filename.upper().endswith((".TXT", ".RET", ".REM")):
+    if not (arquivo.filename or "").upper().endswith((".TXT", ".RET", ".REM")):
         raise HTTPException(status_code=400, detail="O arquivo deve ser .TXT, .RET ou .REM.")
 
     try:
@@ -187,13 +187,8 @@ async def validar_xml_caixa(payload: PayloadXML):
         for tag, (codigo_erro, sugestao_padrao) in campos_obrigatorios.items():
             valor = get_tag_text(tag)
             if not valor or not valor.strip():
-                dica_bento = buscar_erro(codigo_erro)
-                
                 # Garante que não exiba a string 'PENDENTE' na interface
-                if dica_bento and dica_bento.get("sugestao_rm") and "PENDENTE" not in dica_bento["sugestao_rm"]:
-                    sugestao = dica_bento["sugestao_rm"]
-                else:
-                    sugestao = sugestao_padrao
+                sugestao = sugestao_confirmada(buscar_erro(codigo_erro)) or sugestao_padrao
 
                 erros.append({
                     "mensagem": f"Tag obrigatória <{tag}> não encontrada ou vazia no XML. Erro Bancário Previsto: ({codigo_erro})",
@@ -203,14 +198,12 @@ async def validar_xml_caixa(payload: PayloadXML):
                 })
 
         # Validação do Nosso Número Caixa (deve ter 17 dígitos e começar com 14)
-        nosso_numero = get_tag_text("NOSSO_NUMERO")
-        if nosso_numero and nosso_numero.strip():
+        nosso_numero = (get_tag_text("NOSSO_NUMERO") or "").strip()
+        if nosso_numero:
             if len(nosso_numero) == 17 and not nosso_numero.startswith("14"):
-                dica_bento = buscar_erro("24", tabela="critica_remessa_400")
                 sugestao = (
-                    dica_bento["sugestao_rm"] 
-                    if dica_bento and "PENDENTE" not in dica_bento["sugestao_rm"] 
-                    else "Gestão Financeira > Movimentações Bancárias > Controle Bancário > Banco e Agências > Anexos > Layout Bancário > Alterar Modalidade/Prefixo para '14'."
+                    sugestao_confirmada(buscar_erro("24", tabela="critica_remessa_400"))
+                    or "Gestão Financeira > Movimentações Bancárias > Controle Bancário > Banco e Agências > Anexos > Layout Bancário > Alterar Modalidade/Prefixo para '14'."
                 )
                 erros.append({
                     "mensagem": "Prefixo do Nosso Número inválido para Cobrança Registrada na Caixa.",
@@ -243,4 +236,14 @@ async def validar_xml_caixa(payload: PayloadXML):
 
 @router.post("/validar-xml-bb")
 async def validar_xml_bb(payload: PayloadXML):
-    return {"valido": True, "erros": []}
+    # Antes devolvia sempre {"valido": True} sem olhar o XML -- o analista
+    # via "nenhum erro encontrado" para qualquer coisa colada. Enquanto as
+    # regras do BB não forem implementadas, a rota diz isso explicitamente.
+    raise HTTPException(
+        status_code=501,
+        detail=(
+            "A validação do XML de Registro Online do Banco do Brasil ainda não "
+            "foi implementada -- nenhuma regra foi conferida. Por enquanto só a "
+            "Caixa é suportada."
+        ),
+    )

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Header } from "../components/Header";
+import { baixarBlob } from "../lib/download";
 
 type ErroValidacao = {
   mensagem: string;
@@ -88,10 +89,15 @@ export default function ValidadorCnabPage() {
         resposta = await fetch(rota, { method: "POST", body: formData });
       }
 
-      const dados = await resposta.json();
-      if (!resposta.ok) {
-        setErro(dados?.detail || "Não foi possível processar a validação.");
-        setCarregando(false);
+      // Erro do servidor/Vercel pode vir em HTML, não JSON -- não deixa o
+      // .json() estourar e esconder a mensagem real atrás de "mal formatado".
+      const dados = await resposta.json().catch(() => null);
+      if (!resposta.ok || !dados) {
+        setErro(
+          typeof dados?.detail === "string"
+            ? dados.detail
+            : "Não foi possível processar a validação."
+        );
         return;
       }
       setResultado(dados);
@@ -126,12 +132,10 @@ export default function ValidadorCnabPage() {
   function baixarCorrigido() {
     if (!correcao) return;
     const blob = new Blob([correcao.conteudo_corrigido], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = arquivo ? arquivo.name.replace(/(\.\w+)?$/, "_CORRIGIDO$1") : "corrigido.txt";
-    link.click();
-    URL.revokeObjectURL(url);
+    baixarBlob(
+      blob,
+      arquivo ? arquivo.name.replace(/(\.\w+)?$/, "_CORRIGIDO$1") : "corrigido.txt"
+    );
   }
 
   const errosParaMostrar = resultado?.erros ?? correcao?.erros_restantes ?? [];
@@ -346,10 +350,10 @@ function ErroItem({ erro, tipo }: { erro: ErroValidacao; tipo: string }) {
     <div className="px-5 py-4">
       <div className="flex flex-wrap items-center gap-2">
         {tipo !== "registro_online" && erro.linha !== null && erro.linha !== undefined && (
-          <span className="rounded bg-surface-hover px-2 py-0.5 font-mono text-xs text-muted">Linha {erro.linha}</span>
+          <span className="rounded bg-paper px-2 py-0.5 font-mono text-xs text-muted">Linha {erro.linha}</span>
         )}
         {tipo !== "registro_online" && erro.posicao_inicio !== null && erro.posicao_inicio !== undefined && (
-          <span className="rounded bg-surface-hover px-2 py-0.5 font-mono text-xs text-muted">
+          <span className="rounded bg-paper px-2 py-0.5 font-mono text-xs text-muted">
             pos. {erro.posicao_inicio}
             {erro.posicao_fim !== erro.posicao_inicio ? `-${erro.posicao_fim}` : ""}
           </span>

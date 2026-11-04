@@ -5,6 +5,7 @@ Detecta sozinho se o arquivo é remessa ou retorno (olhando a posição 2 do hea
 """
 
 from ..erros import ErroValidacao, ResultadoValidacao
+from ..linhas import ler_linhas
 from .layout import TAMANHO_LINHA, CampoLayout400
 from .bancos import bb as layout
 
@@ -80,7 +81,7 @@ def validar_cnab400_bb(conteudo: str) -> ResultadoValidacao:
     """
     Valida um arquivo CNAB 400 de Cobrança do Banco do Brasil (remessa ou retorno).
     """
-    linhas = conteudo.splitlines()
+    linhas = ler_linhas(conteudo)
     erros: list[ErroValidacao] = []
 
     if not linhas:

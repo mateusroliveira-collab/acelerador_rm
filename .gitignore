@@ -11,3 +11,7 @@ out/
 .vercel
 .DS_Store
 Thumbs.db
+
+# Banco SQLite local de desenvolvimento (criado sozinho sem DATABASE_URL)
+*.db
+*.tsbuildinfo

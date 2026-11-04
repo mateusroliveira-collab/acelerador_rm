@@ -7,6 +7,10 @@ lógica pesada (limpeza de XML) mora em xml_cleaner.py; aqui só
 orquestra: recebe a requisição, chama a lógica, devolve a resposta.
 """
 
+import re
+import unicodedata
+from urllib.parse import quote
+
 from fastapi import APIRouter, HTTPException, Response, UploadFile, File
 from pydantic import BaseModel
 
@@ -25,6 +29,40 @@ from ..db import SessionLocal
 from ..models import XmlPersonalizado
 
 router = APIRouter(prefix="/api/xml", tags=["xml"])
+
+
+def _nome_limpo(nome_original: str | None) -> str:
+    """'arquivo.xml' -> 'arquivo_LIMPO.xml' (só tira a última extensão)."""
+    base = (nome_original or "arquivo").rsplit(".", 1)[0] or "arquivo"
+    return base + "_LIMPO.xml"
+
+
+def _resposta_download_xml(conteudo: str, nome_saida: str, campos_zerados: int) -> Response:
+    """
+    Monta a resposta de download. O nome vai em dois formatos: um ASCII
+    simples (fallback) e o "filename*" do RFC 5987 com o nome real em
+    UTF-8. Antes o nome ia cru no header -- qualquer caractere fora do
+    Latin-1 (ex: travessão "—") derrubava a rota com erro 500, e aspas no
+    nome quebravam o header.
+    """
+    nome_ascii = (
+        unicodedata.normalize("NFKD", nome_saida).encode("ascii", "ignore").decode("ascii")
+    )
+    nome_ascii = re.sub(r'[^A-Za-z0-9._ ()-]', "_", nome_ascii) or "arquivo_LIMPO.xml"
+    return Response(
+        content=conteudo,
+        media_type="application/xml",
+        headers={
+            "Content-Disposition": (
+                f"attachment; filename=\"{nome_ascii}\"; filename*=UTF-8''{quote(nome_saida)}"
+            ),
+            "X-Campos-Zerados": str(campos_zerados),
+        },
+    )
+
+
+_LIMITE_TEXTO = 2_000_000
+_MSG_LIMITE = "Arquivo muito grande (limite de ~2MB de texto pra esse tipo de envio)."
 
 
 class TextoMit41(BaseModel):
@@ -134,22 +172,17 @@ async def limpar_xml_avulso(arquivo: UploadFile = File(...)):
             detail="Arquivo não parece ser um XML de texto válido (falha ao decodificar).",
         )
 
+    if len(conteudo_original) > _LIMITE_TEXTO:
+        raise HTTPException(status_code=400, detail=_MSG_LIMITE)
+
     xml_limpo, campos_zerados = limpar_xml(conteudo_original)
-    nome_saida = (arquivo.filename or "arquivo").rsplit(".", 1)[0] + "_LIMPO.xml"
 
     try:
         registrar_uso("xml", "limpar-avulso", {"campos_zerados": campos_zerados})
     except Exception:
         pass
 
-    return Response(
-        content=xml_limpo,
-        media_type="application/xml",
-        headers={
-            "Content-Disposition": f'attachment; filename="{nome_saida}"',
-            "X-Campos-Zerados": str(campos_zerados),
-        },
-    )
+    return _resposta_download_xml(xml_limpo, _nome_limpo(arquivo.filename), campos_zerados)
 
 
 @router.post("/enviar")
@@ -167,11 +200,8 @@ async def enviar_xml_personalizado(grupo: str, arquivo: UploadFile = File(...)):
             detail="Arquivo não parece ser um XML de texto válido (falha ao decodificar).",
         )
 
-    if len(conteudo_original) > 2_000_000:
-        raise HTTPException(
-            status_code=400,
-            detail="Arquivo muito grande (limite de ~2MB de texto pra esse tipo de envio).",
-        )
+    if len(conteudo_original) > _LIMITE_TEXTO:
+        raise HTTPException(status_code=400, detail=_MSG_LIMITE)
 
     xml_limpo, campos_zerados = limpar_xml(conteudo_original)
 
@@ -211,14 +241,10 @@ def baixar_xml_personalizado(xml_id: int):
     if not registro:
         raise HTTPException(status_code=404, detail="XML personalizado não encontrado.")
 
-    nome_saida = registro.nome_arquivo.rsplit(".", 1)[0] + "_LIMPO.xml"
-    return Response(
-        content=registro.conteudo_limpo,
-        media_type="application/xml",
-        headers={
-            "Content-Disposition": f'attachment; filename="{nome_saida}"',
-            "X-Campos-Zerados": str(registro.campos_zerados),
-        },
+    return _resposta_download_xml(
+        registro.conteudo_limpo or "",
+        _nome_limpo(registro.nome_arquivo),
+        registro.campos_zerados or 0,
     )
 
 
@@ -261,7 +287,12 @@ def buscar_arquivos(grupo: str, busca: str = ""):
         try:
             consulta = db.query(XmlPersonalizado).filter(XmlPersonalizado.grupo == grupo)
             if termo:
-                consulta = consulta.filter(XmlPersonalizado.nome_arquivo.ilike(f"%{termo}%"))
+                # Escapa os curingas do LIKE: "_" é comum em nome de arquivo
+                # e, sem escape, casaria com qualquer caractere.
+                termo_like = termo.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                consulta = consulta.filter(
+                    XmlPersonalizado.nome_arquivo.ilike(f"%{termo_like}%", escape="\\")
+                )
             personalizados = [
                 {"id": p.id, "nome": p.nome_arquivo, "personalizado": True}
                 for p in consulta.order_by(XmlPersonalizado.criado_em.desc()).all()
@@ -286,24 +317,29 @@ def limpar_arquivo(grupo: str, arquivo: str):
     if not config.grupo_existe(grupo):
         raise HTTPException(status_code=404, detail=f"Grupo '{grupo}' não encontrado.")
 
-    caminho = config.pasta_do_grupo(grupo) / arquivo
-    if not caminho.exists() or caminho.suffix.lower() != ".xml":
+    pasta = config.pasta_do_grupo(grupo).resolve()
+    caminho = (pasta / arquivo).resolve()
+    # "arquivo" vem da URL: sem essa checagem, um nome tipo "../outra_pasta/x.xml"
+    # (ou caminho absoluto) lia qualquer .xml do servidor fora da pasta do grupo.
+    if (
+        caminho.parent != pasta
+        or not caminho.is_file()
+        or caminho.suffix.lower() != ".xml"
+    ):
         raise HTTPException(status_code=404, detail="Arquivo não encontrado.")
 
-    conteudo_original = caminho.read_text(encoding="utf-8-sig")
+    try:
+        conteudo_original = caminho.read_text(encoding="utf-8-sig")
+    except UnicodeDecodeError:
+        raise HTTPException(
+            status_code=400,
+            detail="Arquivo da base não está em UTF-8 -- não foi possível higienizar.",
+        )
     xml_limpo, campos_zerados = limpar_xml(conteudo_original)
 
-    nome_saida = caminho.stem + "_LIMPO.xml"
     try:
         registrar_uso("xml", "limpar", {"grupo": grupo, "arquivo": arquivo, "campos_zerados": campos_zerados})
     except Exception:
         pass
 
-    return Response(
-        content=xml_limpo,
-        media_type="application/xml",
-        headers={
-            "Content-Disposition": f'attachment; filename="{nome_saida}"',
-            "X-Campos-Zerados": str(campos_zerados),
-        },
-    )
+    return _resposta_download_xml(xml_limpo, _nome_limpo(caminho.name), campos_zerados)

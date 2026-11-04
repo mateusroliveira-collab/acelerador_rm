@@ -149,7 +149,26 @@ ERROS_REJEICAO_ENTRADA_240: dict[str, dict[str, str]] = {
     "VC": {"mensagem_banco": "Beneficiário Deve Ser Padrão CNAB 240", "causa_provavel": "A operação exige beneficiário configurado como CNAB 240, mas o cadastro está diferente.", "sugestao_rm": _PENDENTE},
 }
 
-def buscar_erro(codigo: str, tabela: str = "retorno_400") -> dict[str, str] | None:
+def sugestao_confirmada(info: dict[str, str] | None) -> str | None:
+    """
+    Devolve a sugestão de correção no RM só se ela já foi confirmada na
+    prática -- o marcador interno _PENDENTE nunca deve chegar na tela.
+    """
+    if not info:
+        return None
+    sugestao = info.get("sugestao_rm")
+    if not sugestao or sugestao == _PENDENTE:
+        return None
+    return sugestao
+
+
+def dica_completa(info: dict[str, str], padrao: str) -> str:
+    """Causa provável + sugestão confirmada (ou a sugestão padrão, se ainda pendente)."""
+    causa = info.get("causa_provavel", "")
+    return f"{causa} {sugestao_confirmada(info) or padrao}".strip()
+
+
+def buscar_erro(codigo: str, tabela: str | None = "retorno_400") -> dict[str, str] | None:
     """
     Busca um código de erro numa das tabelas disponíveis.
     tabela: "retorno_400" (padrão), "critica_remessa_400" ou "entrada_240"

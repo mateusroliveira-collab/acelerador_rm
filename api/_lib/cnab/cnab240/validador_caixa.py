@@ -4,8 +4,21 @@ Valida regras de negócio da Remessa (Segmento P) e lê códigos de rejeição d
 """
 
 from ..erros import ErroValidacao, ResultadoValidacao
+from ..linhas import ler_linhas
 from .validador import validar_cnab240
-from ..bancos.caixa import buscar_erro
+from ..bancos.caixa import buscar_erro, dica_completa, sugestao_confirmada
+
+# Códigos de movimento retorno (pos. 16-17 do Segmento T) que indicam
+# REJEIÇÃO pelo padrão FEBRABAN: 03 = entrada rejeitada, 26 = instrução
+# rejeitada, 30 = alteração de dados rejeitada. Nos demais movimentos
+# (ex: 06 = liquidação), o campo de motivo traz informação complementar
+# (canal de pagamento etc.), não erro -- não pode virar "título rejeitado".
+_MOVIMENTOS_REJEICAO = {"03", "26", "30"}
+
+_SUGESTAO_PADRAO_REJEICAO = (
+    "Confira o cadastro do título/convênio no RM (Gestão Financeira > "
+    "Movimentações Bancárias > Controle Bancário) e o manual da Caixa para esse código."
+)
 
 
 def validar_cnab240_caixa(conteudo: str) -> ResultadoValidacao:
@@ -13,7 +26,7 @@ def validar_cnab240_caixa(conteudo: str) -> ResultadoValidacao:
     # 1. Executa a validação estrutural genérica da FEBRABAN
     resultado = validar_cnab240(conteudo)
     erros = list(resultado.erros)
-    linhas = conteudo.splitlines()
+    linhas = ler_linhas(conteudo)
 
     if not linhas:
         return resultado
@@ -46,7 +59,7 @@ def validar_cnab240_caixa(conteudo: str) -> ResultadoValidacao:
                 nosso_numero = texto_linha[37:57].strip()  # Posição 38 a 57
                 if nosso_numero and len(nosso_numero) >= 17 and not nosso_numero.startswith("14"):
                     dica_bento = buscar_erro("24", tabela="critica_remessa_400")
-                    sugestao = dica_bento["sugestao_rm"] if dica_bento else "Ajustar o Nosso Número no RM para iniciar com '14'."
+                    sugestao = sugestao_confirmada(dica_bento) or "Ajustar o Nosso Número no RM para iniciar com '14'."
 
                     erros.append(
                         ErroValidacao(
@@ -63,26 +76,38 @@ def validar_cnab240_caixa(conteudo: str) -> ResultadoValidacao:
             # --- REGRA DE RETORNO: Segmento T (Status / Rejeição) ---
             elif codigo_segmento == "T":
                 cod_movimento = texto_linha[15:17].strip()  # Posição 16 a 17 (Ex: 03 = Rejeição)
-                motivos = texto_linha[206:221].strip()       # Posição 207 a 221 (Até 5 códigos de 2 dígitos)
+                if cod_movimento not in _MOVIMENTOS_REJEICAO:
+                    continue
 
-                if cod_movimento == "03" or motivos:
-                    # Decompõe os pares de códigos de motivo
-                    codigos_motivo = [motivos[j:j+2] for j in range(0, len(motivos), 2) if motivos[j:j+2].strip()]
-                    
-                    for cod_m in codigos_motivo:
-                        if cod_m and cod_m != "00":
-                            info = buscar_erro(cod_m, tabela="entrada_240") or buscar_erro(cod_m, tabela="retorno_400")
-                            if info:
-                                erros.append(
-                                    ErroValidacao(
-                                        mensagem=f'Título Rejeitado no Retorno Caixa 240: ({cod_m}) {info["mensagem_banco"]}',
-                                        linha=i,
-                                        posicao_inicio=207,
-                                        posicao_fim=221,
-                                        campo="Motivo da Ocorrência",
-                                        valor_encontrado=cod_m,
-                                        sugestao_rm=f'{info["causa_provavel"]} {info["sugestao_rm"]}'
-                                    )
-                                )
+                motivos = texto_linha[206:221]  # Posição 207 a 221 (até 5 códigos de 2 posições)
+                codigos_motivo = [
+                    motivos[j:j + 2] for j in range(0, len(motivos), 2)
+                    if motivos[j:j + 2].strip() and motivos[j:j + 2] != "00"
+                ]
+                if not codigos_motivo:
+                    codigos_motivo = ["(sem código de motivo)"]
+
+                for cod_m in codigos_motivo:
+                    info = buscar_erro(cod_m, tabela="entrada_240") or buscar_erro(cod_m, tabela="retorno_400")
+                    if info:
+                        mensagem = f'Título Rejeitado no Retorno Caixa 240: ({cod_m}) {info["mensagem_banco"]}'
+                        sugestao = dica_completa(info, _SUGESTAO_PADRAO_REJEICAO)
+                    else:
+                        mensagem = (
+                            f"Título Rejeitado no Retorno Caixa 240 (movimento {cod_movimento}): "
+                            f"motivo {cod_m} ainda não catalogado nesta ferramenta."
+                        )
+                        sugestao = _SUGESTAO_PADRAO_REJEICAO
+                    erros.append(
+                        ErroValidacao(
+                            mensagem=mensagem,
+                            linha=i,
+                            posicao_inicio=207,
+                            posicao_fim=221,
+                            campo="Motivo da Ocorrência",
+                            valor_encontrado=cod_m,
+                            sugestao_rm=sugestao,
+                        )
+                    )
 
     return ResultadoValidacao(valido=len(erros) == 0, erros=erros)

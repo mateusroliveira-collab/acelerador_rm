@@ -8,6 +8,7 @@ campo + o que está errado -- pronto pra virar uma dica no RM.
 """
 
 from ..erros import ErroValidacao, ResultadoValidacao
+from ..linhas import ler_linhas
 from .layout import (
     CampoLayout,
     HEADER_ARQUIVO,
@@ -103,7 +104,7 @@ def validar_cnab240(conteudo: str) -> ResultadoValidacao:
     Registros de Segmento (detalhe) ainda não são validados campo a campo,
     só tem o tamanho da linha conferido.
     """
-    linhas = conteudo.splitlines()
+    linhas = ler_linhas(conteudo)
     erros: list[ErroValidacao] = []
 
     if not linhas:

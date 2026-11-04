@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Header } from "../components/Header";
 
 type SugestaoGrupo = { grupo: string; pontuacao: number; sinais: string[] };
@@ -27,11 +27,31 @@ export default function PreProcessadorMit41Page() {
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
+  function limparResultado() {
+    setErro(null);
+    setSubprocessos(null);
+    setTextoParaPonte(null);
+    setLinhaAberta(null);
+    setCopiado(false);
+  }
+
+  async function copiarParaPonte() {
+    if (!textoParaPonte) return;
+    try {
+      await navigator.clipboard.writeText(textoParaPonte);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 2000);
+    } catch {
+      setErro(
+        "O navegador bloqueou a cópia automática -- selecione e copie o texto manualmente."
+      );
+    }
+  }
+
   async function processar() {
     if (!arquivo) return;
     setCarregando(true);
-    setErro(null);
-    setSubprocessos(null);
+    limparResultado();
     try {
       const formData = new FormData();
       formData.append("arquivo", arquivo);
@@ -79,8 +99,7 @@ export default function PreProcessadorMit41Page() {
               className="hidden"
               onChange={(e) => {
                 setArquivo(e.target.files?.[0] ?? null);
-                setSubprocessos(null);
-                setErro(null);
+                limparResultado();
               }}
             />
           </label>
@@ -99,6 +118,12 @@ export default function PreProcessadorMit41Page() {
           </p>
         )}
 
+        {subprocessos && subprocessos.length === 0 && (
+          <p className="mt-4 rounded-md border border-line bg-surface px-4 py-3 text-sm text-muted">
+            Nenhum subprocesso reconhecido nesse PDF.
+          </p>
+        )}
+
         {subprocessos && subprocessos.length > 0 && (
           <div className="mt-8">
             <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-line bg-surface p-4">
@@ -114,13 +139,7 @@ export default function PreProcessadorMit41Page() {
                 </p>
               </div>
               <button
-                onClick={() => {
-                  if (textoParaPonte) {
-                    navigator.clipboard.writeText(textoParaPonte);
-                    setCopiado(true);
-                    setTimeout(() => setCopiado(false), 2000);
-                  }
-                }}
+                onClick={copiarParaPonte}
                 className="shrink-0 rounded-md bg-action px-4 py-2 text-sm font-medium text-white transition hover:bg-action-hover"
               >
                 {copiado ? "Copiado!" : "Copiar pra ponte"}
@@ -157,9 +176,8 @@ export default function PreProcessadorMit41Page() {
                     const topSugestao = sp.sugestao_aproximada[0];
                     const aberta = linhaAberta === idx;
                     return (
-                      <>
+                      <Fragment key={idx}>
                         <tr
-                          key={idx}
                           onClick={() =>
                             setLinhaAberta(aberta ? null : idx)
                           }
@@ -253,7 +271,7 @@ export default function PreProcessadorMit41Page() {
                             </td>
                           </tr>
                         )}
-                      </>
+                      </Fragment>
                     );
                   })}
                 </tbody>

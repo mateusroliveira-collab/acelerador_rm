@@ -9,6 +9,7 @@ bancos_400/ -- ainda não implementado, ver README/CONTEXTO_PROJETO.md.
 """
 
 from ..erros import ErroValidacao, ResultadoValidacao
+from ..linhas import ler_linhas
 from .layout import TAMANHO_LINHA, TIPO_HEADER, TIPO_DETALHE, TIPO_TRAILER
 
 
@@ -17,7 +18,7 @@ def validar_cnab400(conteudo: str) -> ResultadoValidacao:
     Valida a estrutura genérica de um arquivo CNAB 400 (remessa ou
     retorno), independente do banco.
     """
-    linhas = conteudo.splitlines()
+    linhas = ler_linhas(conteudo)
     erros: list[ErroValidacao] = []
 
     if not linhas:

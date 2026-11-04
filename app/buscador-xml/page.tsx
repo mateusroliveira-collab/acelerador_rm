@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Header } from "../components/Header";
+import { baixarBlob, nomeLimpo } from "../lib/download";
 
 type Grupo = { codigo: string; label: string | null; descricao?: string | null };
 type ArquivoResultado = { nome: string; personalizado: boolean; id?: number };
@@ -38,14 +39,28 @@ export default function BuscadorXmlPage() {
 
   useEffect(() => {
     fetch("/api/xml/grupos")
-      .then((r) => r.json())
-      .then(setGrupos)
+      .then((r) => {
+        if (!r.ok) throw new Error();
+        return r.json();
+      })
+      .then((dados) => {
+        // Resposta de erro vem como objeto ({detail}), não lista -- sem
+        // essa checagem, grupos.map() derrubava a página inteira.
+        if (!Array.isArray(dados)) throw new Error();
+        setGrupos(dados);
+      })
       .catch(() =>
         setErro("Não foi possível carregar os grupos de movimento.")
       );
   }, []);
 
-  async function buscarArquivos() {
+  // Incrementado a cada busca disparada: só a resposta da busca MAIS
+  // RECENTE pode atualizar a lista. Sem isso, digitando rápido, uma
+  // resposta antiga chegando por último sobrescrevia o resultado certo.
+  const idBuscaAtual = useRef(0);
+
+  const buscarArquivos = useCallback(async () => {
+    const idBusca = ++idBuscaAtual.current;
     if (!grupoSelecionado) {
       setArquivos([]);
       return;
@@ -57,21 +72,29 @@ export default function BuscadorXmlPage() {
       const resposta = await fetch(`/api/xml/buscar?${params}`);
       if (!resposta.ok) throw new Error();
       const dados = await resposta.json();
-      setArquivos(dados.arquivos);
+      if (idBusca === idBuscaAtual.current) setArquivos(dados.arquivos ?? []);
     } catch {
-      setErro("Não foi possível buscar os arquivos desse grupo.");
+      if (idBusca === idBuscaAtual.current) {
+        setArquivos([]);
+        setErro("Não foi possível buscar os arquivos desse grupo.");
+      }
     } finally {
-      setCarregando(false);
+      if (idBusca === idBuscaAtual.current) setCarregando(false);
     }
-  }
+  }, [grupoSelecionado, busca]);
 
   useEffect(() => {
-    buscarArquivos();
-  }, [grupoSelecionado, busca]);
+    // Pequeno atraso pra não disparar uma requisição a cada tecla.
+    const timer = setTimeout(buscarArquivos, 250);
+    return () => clearTimeout(timer);
+  }, [buscarArquivos]);
+
+  const chaveItem = (item: ArquivoResultado) =>
+    item.personalizado ? `p-${item.id}` : `b-${item.nome}`;
 
   async function baixarLimpo(item: ArquivoResultado) {
     if (!grupoSelecionado) return;
-    setBaixando(item.nome);
+    setBaixando(chaveItem(item));
     setErro(null);
     try {
       const rota = item.personalizado
@@ -82,12 +105,7 @@ export default function BuscadorXmlPage() {
       });
       if (!resposta.ok) throw new Error();
       const blob = await resposta.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = item.nome.replace(".xml", "_LIMPO.xml");
-      link.click();
-      URL.revokeObjectURL(url);
+      baixarBlob(blob, nomeLimpo(item.nome));
     } catch {
       setErro(`Não foi possível higienizar "${item.nome}".`);
     } finally {
@@ -106,17 +124,15 @@ export default function BuscadorXmlPage() {
         method: "POST",
         body: formData,
       });
-      if (!resposta.ok) throw new Error();
+      if (!resposta.ok) {
+        const dados = await resposta.json().catch(() => null);
+        throw new Error(dados?.detail || "Não foi possível limpar esse arquivo.");
+      }
       const blob = await resposta.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = arquivoAvulso.name.replace(".xml", "_LIMPO.xml");
-      link.click();
-      URL.revokeObjectURL(url);
+      baixarBlob(blob, nomeLimpo(arquivoAvulso.name));
       setArquivoAvulso(null);
-    } catch {
-      setErro("Não foi possível limpar esse arquivo.");
+    } catch (e) {
+      setErro(e instanceof Error && e.message ? e.message : "Não foi possível limpar esse arquivo.");
     } finally {
       setLimpandoAvulso(false);
     }
@@ -160,7 +176,10 @@ export default function BuscadorXmlPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ texto: textoMit41 }),
       });
-      if (!resposta.ok) throw new Error();
+      if (!resposta.ok) {
+        const dadosErro = await resposta.json().catch(() => null);
+        throw new Error(dadosErro?.detail || "Não foi possível analisar o texto do MIT 41.");
+      }
       const dados = await resposta.json();
       setMovimentos(dados.movimentos);
       // Se colou só 1 movimento e ele tem uma sugestão clara, já
@@ -173,8 +192,12 @@ export default function BuscadorXmlPage() {
         setGrupoSelecionado(dados.movimentos[0].sugestoes[0].grupo);
         setBusca(dados.movimentos[0].nome_movimento ?? "");
       }
-    } catch {
-      setErro("Não foi possível analisar o texto do MIT 41.");
+    } catch (e) {
+      // O backend devolve 400 com explicação quando não reconhece nenhum
+      // campo -- antes essa mensagem era descartada.
+      setErro(
+        e instanceof Error && e.message ? e.message : "Não foi possível analisar o texto do MIT 41."
+      );
     } finally {
       setSugerindo(false);
     }
@@ -417,7 +440,7 @@ export default function BuscadorXmlPage() {
 
           {arquivos.map((item) => (
             <div
-              key={item.personalizado ? `p-${item.id}` : item.nome}
+              key={chaveItem(item)}
               className="flex items-center justify-between gap-4 px-4 py-3"
             >
               <span className="flex items-center gap-2">
@@ -426,16 +449,16 @@ export default function BuscadorXmlPage() {
                 </span>
                 {item.personalizado && (
                   <span className="rounded-full bg-brand/20 px-2 py-0.5 text-[10px] font-medium text-brand-light">
-                    enviado por você
+                    contribuído
                   </span>
                 )}
               </span>
               <button
                 onClick={() => baixarLimpo(item)}
-                disabled={baixando === item.nome}
+                disabled={baixando === chaveItem(item)}
                 className="shrink-0 rounded-md bg-action px-4 py-2 text-sm font-medium text-white transition hover:bg-action-hover disabled:opacity-50"
               >
-                {baixando === item.nome ? "Gerando..." : "Limpar e baixar"}
+                {baixando === chaveItem(item) ? "Gerando..." : "Limpar e baixar"}
               </button>
             </div>
           ))}

@@ -66,6 +66,35 @@ def _parse_data(valor) -> date | None:
         return None
 
 
+class _NaoNumerico(Exception):
+    pass
+
+
+def converter_numero(valor) -> float | None:
+    """
+    Converte valor monetário/percentual em float. Aceita número ou texto,
+    inclusive no formato brasileiro ("1.234,56" / "150,00"). Devolve None
+    se vier vazio; levanta _NaoNumerico se vier preenchido mas inválido.
+    """
+    if valor is None or (isinstance(valor, str) and not valor.strip()):
+        return None
+    if isinstance(valor, bool):
+        raise _NaoNumerico
+    if isinstance(valor, (int, float)):
+        return float(valor)
+    texto = str(valor).strip()
+    if "," in texto:
+        texto = texto.replace(".", "").replace(",", ".")
+    try:
+        return float(texto)
+    except ValueError:
+        raise _NaoNumerico
+
+
+def _como_dict(valor) -> dict:
+    return valor if isinstance(valor, dict) else {}
+
+
 def validar_boleto(dados: dict) -> ResultadoValidacaoBoleto:
     """
     Valida as regras de negócio universais de um boleto. Espera um dict
@@ -88,13 +117,31 @@ def validar_boleto(dados: dict) -> ResultadoValidacaoBoleto:
     """
     erros: list[ErroBoleto] = []
 
-    pagador = dados.get("pagador", {}) or {}
-    titulo = dados.get("titulo", {}) or {}
-    desconto = dados.get("desconto") or {}
-    multa = dados.get("multa") or {}
+    # Payload vem de fora (JSON livre): qualquer nível pode vir com tipo
+    # errado. Tipo inesperado vira "ausente" em vez de derrubar a rota (500).
+    dados = _como_dict(dados)
+    pagador = _como_dict(dados.get("pagador"))
+    titulo = _como_dict(dados.get("titulo"))
+    desconto = _como_dict(dados.get("desconto"))
+    multa = _como_dict(dados.get("multa"))
+
+    def numero(origem: dict, chave: str, nome_campo: str) -> float | None:
+        try:
+            return converter_numero(origem.get(chave))
+        except _NaoNumerico:
+            erros.append(
+                ErroBoleto(
+                    campo=nome_campo,
+                    mensagem="Valor não numérico.",
+                    valor_encontrado=str(origem.get(chave)),
+                )
+            )
+            return None
 
     # --- Documento do pagador (CPF/CNPJ) ---
     documento = pagador.get("documento")
+    if documento is not None and not isinstance(documento, str):
+        documento = str(documento)
     if documento:
         valido, tipo = validar_documento(documento)
         if not valido:
@@ -121,7 +168,7 @@ def validar_boleto(dados: dict) -> ResultadoValidacaoBoleto:
         )
 
     # --- Valor do título ---
-    valor_titulo = titulo.get("valor")
+    valor_titulo = numero(titulo, "valor", "titulo.valor")
     if valor_titulo is not None and valor_titulo <= 0:
         erros.append(
             ErroBoleto(
@@ -132,7 +179,7 @@ def validar_boleto(dados: dict) -> ResultadoValidacaoBoleto:
         )
 
     # --- Desconto ---
-    valor_desconto = desconto.get("valor")
+    valor_desconto = numero(desconto, "valor", "desconto.valor")
     if valor_desconto is not None:
         if valor_titulo is not None and valor_desconto >= valor_titulo:
             erros.append(
@@ -157,7 +204,7 @@ def validar_boleto(dados: dict) -> ResultadoValidacaoBoleto:
             )
 
     # --- Multa (limite legal, não é regra de banco -- é lei) ---
-    percentual_multa = multa.get("percentual")
+    percentual_multa = numero(multa, "percentual", "multa.percentual")
     if percentual_multa is not None and percentual_multa > MULTA_MAXIMA_PERCENTUAL:
         erros.append(
             ErroBoleto(
@@ -173,7 +220,7 @@ def validar_boleto(dados: dict) -> ResultadoValidacaoBoleto:
         )
 
     # --- Endereço (exigido pra registro na CIP -- Câmara Interbancária de Pagamentos) ---
-    endereco = pagador.get("endereco", {}) or {}
+    endereco = _como_dict(pagador.get("endereco"))
     campos_endereco_obrigatorios = ["cep", "logradouro", "bairro", "cidade", "uf"]
     for campo in campos_endereco_obrigatorios:
         if not endereco.get(campo):

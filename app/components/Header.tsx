@@ -8,26 +8,45 @@ type Tema = "light" | "dark";
 
 function aplicarTema(tema: Tema) {
   document.documentElement.classList.toggle("dark", tema === "dark");
-  window.localStorage.setItem("tema", tema);
+}
+
+// localStorage pode lançar exceção (armazenamento bloqueado, alguns modos
+// privados) -- tema é conveniência, nunca pode derrubar a página.
+function lerTemaSalvo(): Tema | null {
+  try {
+    const salvo = window.localStorage.getItem("tema");
+    return salvo === "light" || salvo === "dark" ? salvo : null;
+  } catch {
+    return null;
+  }
+}
+
+function salvarTema(tema: Tema) {
+  try {
+    window.localStorage.setItem("tema", tema);
+  } catch {
+    // ignora -- o tema só não fica lembrado
+  }
 }
 
 /**
  * Cabeçalho com logo (troca sozinha entre a versão clara/escura conforme o
  * tema) e o botão de alternar dia/noite. Os dois arquivos de logo ficam em
- * public/totvs-logo-escura.png (pro modo dia, fundo claro) e
+ * public/totvs-logo-preta.png (pro modo dia, fundo claro) e
  * public/totvs-logo-branca.png (pro modo noite, fundo escuro).
  */
 export function Header() {
   const [tema, setTema] = useState<Tema>("dark");
 
   useEffect(() => {
-    const salvo = window.localStorage.getItem("tema") as Tema | null;
     const temaInicial =
-      salvo ??
+      lerTemaSalvo() ??
       (window.matchMedia("(prefers-color-scheme: light)").matches
         ? "light"
         : "dark");
     setTema(temaInicial);
+    // Só aplica -- não salva. Salvar aqui congelava a preferência do
+    // sistema operacional, e o site parava de seguir a troca dia/noite do SO.
     aplicarTema(temaInicial);
   }, []);
 
@@ -35,6 +54,7 @@ export function Header() {
     const novoTema = tema === "dark" ? "light" : "dark";
     setTema(novoTema);
     aplicarTema(novoTema);
+    salvarTema(novoTema);
   }
 
   return (

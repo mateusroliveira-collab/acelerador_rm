@@ -21,15 +21,11 @@ def traduzir_erro_banco(
         info = bb.buscar_erro_bb(codigo_erro)
 
     if info:
-        causa = info.get("causa_provavel", "")
-        sugestao = info.get("sugestao_rm", "")
-        dica_completa = f"{causa} {sugestao}".strip()
-
         return ErroValidacao(
             mensagem=f'Erro {banco.upper()}: ({codigo_erro}) {info.get("mensagem_banco", mensagem)}',
             campo="Registro Online",
             valor_encontrado=codigo_erro,
-            sugestao_rm=dica_completa or "Verifique o cadastro de origem no TOTVS RM.",
+            sugestao_rm=caixa.dica_completa(info, "Verifique o cadastro de origem no TOTVS RM."),
         )
 
     return ErroValidacao(

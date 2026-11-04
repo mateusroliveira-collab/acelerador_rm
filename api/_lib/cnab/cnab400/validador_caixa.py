@@ -8,9 +8,15 @@ de detalhe, então isso importa.
 """
 
 from ..erros import ErroValidacao, ResultadoValidacao
+from ..linhas import ler_linhas
 from .layout import TAMANHO_LINHA, CampoLayout400
 from .bancos import caixa as layout
-from ..bancos.caixa import buscar_erro
+from ..bancos.caixa import buscar_erro, dica_completa
+
+_SUGESTAO_PADRAO_REJEICAO = (
+    "Confira o cadastro do título/convênio no RM (Gestão Financeira > "
+    "Movimentações Bancárias > Controle Bancário) e o manual da Caixa para esse código."
+)
 
 
 def _validar_campo(linha_num: int, texto_linha: str, campo: CampoLayout400):
@@ -89,7 +95,7 @@ def validar_cnab400_caixa(conteudo: str) -> ResultadoValidacao:
     Valida um arquivo CNAB 400 de Cobrança Bancária da Caixa (remessa ou
     retorno -- detectado automaticamente).
     """
-    linhas = conteudo.splitlines()
+    linhas = ler_linhas(conteudo)
     erros: list[ErroValidacao] = []
 
     if not linhas:
@@ -150,21 +156,29 @@ def validar_cnab400_caixa(conteudo: str) -> ResultadoValidacao:
 
             # Para arquivos de RETORNO da Caixa, lê o código de motivo da rejeição (pos. 80 a 82)
             if codigo_tipo == "2" and len(texto_linha) >= 82:
-                cod_rejeicao = texto_linha[79:82].strip()
-                if cod_rejeicao and cod_rejeicao not in ("00", ""):
+                cod_bruto = texto_linha[79:82].strip()
+                # Campo tem 3 posições, mas a tabela NE032 usa 2 dígitos
+                # ("002" e " 02" são o mesmo motivo 02). Tudo zero = sem rejeição.
+                cod_rejeicao = cod_bruto.lstrip("0").zfill(2) if cod_bruto.isdigit() else cod_bruto
+                if cod_rejeicao and cod_rejeicao != "00":
                     info = buscar_erro(cod_rejeicao, tabela="retorno_400")
                     if info:
-                        erros.append(
-                            ErroValidacao(
-                                mensagem=f'Título Rejeitado pela Caixa: ({cod_rejeicao}) {info["mensagem_banco"]}',
-                                linha=i,
-                                posicao_inicio=80,
-                                posicao_fim=82,
-                                campo="Código do Motivo da Rejeição",
-                                valor_encontrado=cod_rejeicao,
-                                sugestao_rm=f'{info["causa_provavel"]} {info["sugestao_rm"]}',
-                            )
+                        mensagem = f'Título Rejeitado pela Caixa: ({cod_rejeicao}) {info["mensagem_banco"]}'
+                        sugestao = dica_completa(info, _SUGESTAO_PADRAO_REJEICAO)
+                    else:
+                        mensagem = f"Título Rejeitado pela Caixa: motivo {cod_bruto} ainda não catalogado nesta ferramenta."
+                        sugestao = _SUGESTAO_PADRAO_REJEICAO
+                    erros.append(
+                        ErroValidacao(
+                            mensagem=mensagem,
+                            linha=i,
+                            posicao_inicio=80,
+                            posicao_fim=82,
+                            campo="Código do Motivo da Rejeição",
+                            valor_encontrado=cod_bruto,
+                            sugestao_rm=sugestao,
                         )
+                    )
         elif tipo_registro == "2":
             if len(texto_linha) != TAMANHO_LINHA:
                 erros.append(

@@ -172,13 +172,16 @@ def _para_boleto_universal(dados_caixa: dict) -> dict:
             "endereco": endereco,
         },
         "titulo": {
-            "valor": float(titulo["valor"]) if titulo.get("valor") else None,
+            # Vai como texto: validar_boleto() converte (aceitando "150,00")
+            # e acusa erro de campo se não for número -- antes o float()
+            # aqui estourava e o analista via "could not convert string to float".
+            "valor": titulo.get("valor"),
             "data_emissao": titulo.get("data_emissao"),
             "data_vencimento": titulo.get("data_vencimento"),
         },
     }
     if multa and multa.get("percentual"):
-        payload["multa"] = {"percentual": float(multa["percentual"])}
+        payload["multa"] = {"percentual": multa["percentual"]}
     return payload
 
 
@@ -200,7 +203,7 @@ def validar_boleto_xml_caixa(xml_texto: str) -> ResultadoValidacaoBoleto:
     if juros_mora and juros_mora.get("valor"):
         resultado.avisos.append(
             f"Juros de mora informado: {juros_mora['valor']}% "
-            f"({juros_mora.get('tipo', 'tipo não informado')}). "
+            f"({juros_mora.get('tipo') or 'tipo não informado'}). "
             "Isso é diferente de multa -- confirma se a taxa está de "
             "acordo com o combinado no contrato do cliente."
         )

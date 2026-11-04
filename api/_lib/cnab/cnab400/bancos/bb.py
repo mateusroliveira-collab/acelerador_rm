@@ -27,7 +27,7 @@ HEADER_REMESSA: list[CampoLayout400] = [
     CampoLayout400("DV da Conta Corrente", 40, 40, "alfa"),
     CampoLayout400("Complemento (Zeros)", 41, 46, "num", valor_fixo="000000"),
     CampoLayout400("Nome do Beneficiário", 47, 76, "alfa"),
-    CampoLayout400("Nome do Banco", 77, 94, "alfa", valor_fixo="001BANCODOBRASIL"),
+    CampoLayout400("Nome do Banco", 77, 94, "alfa", valor_fixo="001BANCODOBRASIL  "),  # 18 posições: "001" + "BANCODOBRASIL" + 2 brancos
     CampoLayout400("Data da Gravação", 95, 100, "num"),
     CampoLayout400("Sequencial da Remessa", 101, 107, "num"),
     CampoLayout400("Complemento", 108, 129, "alfa", obrigatorio=False),
@@ -112,7 +112,7 @@ HEADER_RETORNO: list[CampoLayout400] = [
     CampoLayout400("DV da Conta Corrente", 40, 40, "alfa"),
     CampoLayout400("Complemento (Zeros)", 41, 46, "num", valor_fixo="000000"),
     CampoLayout400("Nome do Cedente", 47, 76, "alfa"),
-    CampoLayout400("Nome do Banco", 77, 94, "alfa", valor_fixo="001BANCODOBRASIL"),
+    CampoLayout400("Nome do Banco", 77, 94, "alfa", valor_fixo="001BANCODOBRASIL  "),  # 18 posições: "001" + "BANCODOBRASIL" + 2 brancos
     CampoLayout400("Data da Gravação", 95, 100, "num"),
     CampoLayout400("Sequencial do Retorno", 101, 107, "num"),
     CampoLayout400("Complemento", 108, 149, "alfa", obrigatorio=False),
