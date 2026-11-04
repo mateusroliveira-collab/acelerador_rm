@@ -44,10 +44,17 @@ def _descobrir_database_url() -> str:
 
 DATABASE_URL = _descobrir_database_url()
 
-# Neon (e alguns outros provedores) às vezes fornece a URL com o prefixo
-# antigo "postgres://" -- o SQLAlchemy moderno exige "postgresql://".
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+# Fixa o driver explicitamente em "postgresql+psycopg2://" (o pacote que
+# está no requirements.txt é o psycopg2-binary). Sem isso:
+#  - Neon às vezes fornece o prefixo antigo "postgres://", que o
+#    SQLAlchemy moderno não aceita;
+#  - a partir do SQLAlchemy 2.1, "postgresql://" sem driver passou a usar
+#    o psycopg (v3) por padrão -- que não está instalado. Isso derrubou a
+#    API inteira em produção ("No module named 'psycopg'").
+for _prefixo in ("postgres://", "postgresql://"):
+    if DATABASE_URL.startswith(_prefixo):
+        DATABASE_URL = "postgresql+psycopg2://" + DATABASE_URL[len(_prefixo):]
+        break
 
 _eh_sqlite = DATABASE_URL.startswith("sqlite")
 
