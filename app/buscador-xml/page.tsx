@@ -250,6 +250,18 @@ Ele some das buscas de todo mundo. (A exclusão é registrada e pode ser desfeit
     }
   }
 
+  // Registra (sem bloquear a tela) quando o analista escolhe um grupo diferente
+  // da 1ª sugestão -- serve pra ajustar o dicionário do matcher depois.
+  function registrarCorrecao(mov: MovimentoAnalisado, escolhido: string) {
+    const sugerido = mov.sugestoes[0]?.grupo ?? null;
+    if (sugerido === escolhido) return;
+    fetch("/api/xml/sugestao-corrigida", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sugerido, escolhido, nome_movimento: mov.nome_movimento }),
+    }).catch(() => {});
+  }
+
   async function sugerirGrupo() {
     if (!textoMit41.trim()) return;
     setSugerindo(true);
@@ -387,6 +399,7 @@ Ele some das buscas de todo mundo. (A exclusão é registrada e pode ser desfeit
                     <button
                       key={s.grupo}
                       onClick={() => {
+                        registrarCorrecao(mov, s.grupo);
                         setGrupoSelecionado(s.grupo);
                         // Já filtra a lista abaixo pelo nome do movimento,
                         // pra cair direto nos arquivos que interessam.
@@ -476,7 +489,14 @@ Ele some das buscas de todo mundo. (A exclusão é registrada e pode ser desfeit
           {grupos.map((g) => (
             <button
               key={g.codigo}
-              onClick={() => setGrupoSelecionado(g.codigo)}
+              onClick={() => {
+                // Com um único movimento analisado, escolher outro grupo na
+                // grade também conta como correção da sugestão.
+                if (movimentos && movimentos.length === 1) {
+                  registrarCorrecao(movimentos[0], g.codigo);
+                }
+                setGrupoSelecionado(g.codigo);
+              }}
               title={g.descricao ?? undefined}
               className={`rounded-lg border px-3 py-4 text-left transition ${
                 grupoSelecionado === g.codigo

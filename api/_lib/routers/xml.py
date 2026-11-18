@@ -103,6 +103,37 @@ def sugerir_grupo_por_mit41(corpo: TextoMit41, tarefas: BackgroundTasks):
     return {"movimentos": resultados}
 
 
+class SugestaoCorrigida(BaseModel):
+    sugerido: str | None = None  # 1ª sugestão do matcher (None = não sugeriu nada)
+    escolhido: str  # grupo que o analista de fato escolheu
+    nome_movimento: str | None = None
+
+
+@router.post("/sugestao-corrigida")
+def registrar_sugestao_corrigida(corpo: SugestaoCorrigida, tarefas: BackgroundTasks):
+    """
+    Registra no log de uso quando o analista escolhe um grupo diferente da
+    1ª sugestão do matcher -- insumo pra ajustar o dicionário de sinônimos
+    (mit41/sinonimos.py) depois. Guarda só o nome do movimento, nunca o
+    texto do documento.
+    """
+    if not config.grupo_existe(corpo.escolhido):
+        raise HTTPException(status_code=404, detail=f"Grupo '{corpo.escolhido}' não encontrado.")
+    if corpo.sugerido == corpo.escolhido:
+        return {"registrado": False}  # concordou com a sugestão: nada a aprender
+    tarefas.add_task(
+        registrar_uso,
+        "mit41",
+        "sugestao-corrigida",
+        {
+            "sugerido": corpo.sugerido,
+            "escolhido": corpo.escolhido,
+            "nome_movimento": (corpo.nome_movimento or "")[:200],
+        },
+    )
+    return {"registrado": True}
+
+
 @router.post("/pre-processar-mit41")
 async def pre_processar_mit41_bruto(arquivo: UploadFile = File(...)):
     """

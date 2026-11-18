@@ -49,6 +49,10 @@ checar("GET /api/xml/pesquisar (sem acento)", r.status_code == 200 and r.json()[
 r = client.get("/api/xml/pesquisar", params={"q": ""})
 checar("GET /api/xml/pesquisar (vazio)", r.status_code == 200 and r.json()["total"] == 0)
 
+texto_mit41 = "[INICIO_MOVIMENTO]\nNOME_MOVIMENTO=Baixa de Estoque\n[FIM_MOVIMENTO]"
+r = client.post("/api/xml/sugerir-grupo", json={"texto": texto_mit41})
+checar("POST /api/xml/sugerir-grupo", r.status_code == 200 and r.json()["movimentos"][0]["sugestoes"][0]["grupo"] == "4.1")
+
 print()
 if falhas:
     print(f"{len(falhas)} falha(s).")
