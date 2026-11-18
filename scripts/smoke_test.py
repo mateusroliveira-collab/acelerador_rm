@@ -60,6 +60,17 @@ r = client.post("/api/dataserver/glb-usuario/gerar", json={"operacao": "incluir"
     "CODUSUARIO": "teste.smoke", "CODACESSO": "Acesso01", "DATAINICIO": "2026-01-01"}})
 checar("POST /api/dataserver/glb-usuario/gerar", r.status_code == 200 and r.json()["payload"]["STATUS"] == 1)
 
+texto_lote = "\n".join([
+    "CODUSUARIO;CODACESSO;DATAINICIO",
+    "teste.um;Acesso01;01/01/2026",
+    "teste.dois;Acesso01;01/01/2026",
+])
+r = client.post("/api/dataserver/glb-usuario/lote", json={"operacao": "incluir", "texto": texto_lote})
+checar("POST /api/dataserver/glb-usuario/lote", r.status_code == 200 and r.json()["validos"] == 2)
+
+r = client.get("/api/dataserver/glb-usuario/modelo-csv")
+checar("GET /api/dataserver/glb-usuario/modelo-csv", r.status_code == 200 and b"CODUSUARIO" in r.content)
+
 print()
 if falhas:
     print(f"{len(falhas)} falha(s).")

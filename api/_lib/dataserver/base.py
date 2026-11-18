@@ -59,6 +59,10 @@ class Modulo:
     entrega: Callable[[dict, str], dict] = lambda payload, operacao: {}
     # Pontos do schema que ainda não foram confirmados contra o RM real.
     nao_validado: tuple[str, ...] = field(default_factory=tuple)
+    # Campo que identifica o registro (usado pra achar repetidos no lote).
+    campo_chave: str | None = None
+    # (operacao, nome_arquivo, total_validos) -> instruções de envio do lote
+    entrega_lote: Callable[[str, str, int], list] = lambda operacao, nome_arquivo, total: []
 
     def para_dict(self) -> dict:
         return {
@@ -66,6 +70,7 @@ class Modulo:
             "descricao": self.descricao, "operacoes": list(self.operacoes),
             "campos": [c.para_dict() for c in self.campos],
             "nao_validado": list(self.nao_validado),
+            "lote": True,
         }
 
 

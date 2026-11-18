@@ -47,6 +47,25 @@ function valoresIniciais(modulo: Modulo): Valores {
   return v;
 }
 
+type LinhaLote = {
+  linha: number;
+  chave: string | null;
+  valido: boolean;
+  erros: { campo: string; mensagem: string }[];
+  avisos: string[];
+};
+type ResultadoLote = {
+  total: number;
+  validos: number;
+  invalidos: number;
+  avisos_gerais: string[];
+  linhas: LinhaLote[];
+  jsonl?: string;
+  json?: string;
+  nome_arquivo?: string;
+  instrucoes?: string[];
+};
+
 const OPERACAO_ROTULO: Record<string, string> = {
   incluir: "Incluir usuário novo",
   alterar: "Alterar usuário existente",
@@ -62,6 +81,13 @@ export default function GeradorDataServerPage() {
   const [gerando, setGerando] = useState(false);
   const [resultado, setResultado] = useState<Resultado | null>(null);
   const [copiado, setCopiado] = useState(false);
+
+  // Modo lote (planilha)
+  const [modo, setModo] = useState<"formulario" | "lote">("formulario");
+  const [textoLote, setTextoLote] = useState("");
+  const [nomeArquivoLote, setNomeArquivoLote] = useState<string | null>(null);
+  const [lote, setLote] = useState<ResultadoLote | null>(null);
+  const [processandoLote, setProcessandoLote] = useState(false);
 
   const modulo = modulos.find((m) => m.chave === chave) ?? null;
 
@@ -132,6 +158,61 @@ export default function GeradorDataServerPage() {
     } finally {
       setGerando(false);
     }
+  }
+
+  async function lerArquivoLote(arquivo: File | null) {
+    if (!arquivo) return;
+    setErro(null);
+    setLote(null);
+    try {
+      setTextoLote(await arquivo.text());
+      setNomeArquivoLote(arquivo.name);
+    } catch {
+      setErro("Não foi possível ler o arquivo.");
+    }
+  }
+
+  async function validarLote() {
+    if (!modulo) return;
+    setProcessandoLote(true);
+    setErro(null);
+    setLote(null);
+    try {
+      const resposta = await fetch(`/api/dataserver/${modulo.chave}/lote`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operacao, texto: textoLote }),
+      });
+      const dados = await resposta.json().catch(() => null);
+      if (!resposta.ok) {
+        throw new Error(
+          typeof dados?.detail === "string" ? dados.detail : "Não foi possível processar o lote."
+        );
+      }
+      setLote(dados);
+    } catch (e) {
+      setErro(e instanceof Error && e.message ? e.message : "Não foi possível processar o lote.");
+    } finally {
+      setProcessandoLote(false);
+    }
+  }
+
+  async function baixarModelo() {
+    if (!modulo) return;
+    try {
+      const resposta = await fetch(`/api/dataserver/${modulo.chave}/modelo-csv`);
+      if (!resposta.ok) throw new Error();
+      baixarBlob(await resposta.blob(), `${modulo.dataserver}_modelo.csv`);
+    } catch {
+      setErro("Não foi possível baixar o modelo.");
+    }
+  }
+
+  function baixarLote(formato: "jsonl" | "json") {
+    if (!lote?.jsonl || !lote.json || !lote.nome_arquivo) return;
+    const conteudo = formato === "jsonl" ? lote.jsonl : lote.json;
+    const nome = formato === "jsonl" ? lote.nome_arquivo : lote.nome_arquivo.replace(/\.jsonl$/, ".json");
+    baixarBlob(new Blob([conteudo], { type: "application/json;charset=utf-8" }), nome);
   }
 
   function baixar() {
@@ -230,7 +311,155 @@ export default function GeradorDataServerPage() {
               ))}
             </div>
 
-            {abas.map((aba) => (
+            <div className="mt-6 flex gap-2 text-sm">
+              {(["formulario", "lote"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => {
+                    setModo(m);
+                    setErro(null);
+                  }}
+                  className={`rounded-md border px-4 py-1.5 transition ${
+                    modo === m
+                      ? "border-brand bg-brand text-white"
+                      : "border-line bg-surface text-ink hover:border-brand"
+                  }`}
+                >
+                  {m === "formulario" ? "Um por vez (formulário)" : "Em lote (planilha)"}
+                </button>
+              ))}
+            </div>
+
+            {modo === "lote" && (
+              <div className="mt-6 rounded-lg border border-line bg-surface p-4">
+                <h2 className="font-display text-sm font-bold text-ink">Carga em lote</h2>
+                <p className="mt-1 text-xs text-muted">
+                  Cole as linhas copiadas do Excel (com o cabeçalho) ou envie um CSV. Máximo de
+                  500 linhas. O cabeçalho aceita o nome do campo (ex.: CODUSUARIO) ou o rótulo
+                  da tela. Datas podem estar em DD/MM/AAAA. Nada do que você cola é salvo.
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <button
+                    onClick={baixarModelo}
+                    className="rounded-md border border-line px-3 py-1.5 text-xs text-ink transition hover:border-brand"
+                  >
+                    Baixar modelo CSV
+                  </button>
+                  <label className="cursor-pointer rounded-md border border-line px-3 py-1.5 text-xs text-ink transition hover:border-brand">
+                    {nomeArquivoLote ?? "Enviar arquivo CSV"}
+                    <input
+                      type="file"
+                      accept=".csv,.txt,text/csv"
+                      className="hidden"
+                      onChange={(e) => lerArquivoLote(e.target.files?.[0] ?? null)}
+                    />
+                  </label>
+                </div>
+                <textarea
+                  value={textoLote}
+                  onChange={(e) => {
+                    setTextoLote(e.target.value);
+                    setNomeArquivoLote(null);
+                    setLote(null);
+                  }}
+                  rows={8}
+                  placeholder={"CODUSUARIO;NOME;CODACESSO;DATAINICIO\nana.teste;Ana Teste;Acesso01;18/11/2026"}
+                  className="mt-3 w-full rounded-lg border border-line bg-paper px-3 py-2 font-mono text-xs text-ink placeholder:text-muted focus:border-brand"
+                />
+                <button
+                  onClick={validarLote}
+                  disabled={!textoLote.trim() || processandoLote}
+                  className="mt-3 rounded-md bg-action px-5 py-2.5 text-sm font-medium text-white transition hover:bg-action-hover disabled:opacity-50"
+                >
+                  {processandoLote ? "Validando..." : "Validar lote"}
+                </button>
+
+                {lote && (
+                  <div className="mt-5">
+                    <p className="text-sm text-ink">
+                      <strong>{lote.validos}</strong> válido(s) de {lote.total}
+                      {lote.invalidos > 0 && (
+                        <span className="text-red-600 dark:text-red-300">
+                          {" "}-- {lote.invalidos} com erro (ficam de fora do arquivo)
+                        </span>
+                      )}
+                    </p>
+                    {lote.avisos_gerais.length > 0 && (
+                      <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-700 dark:text-amber-300">
+                        {lote.avisos_gerais.map((a) => (
+                          <li key={a}>{a}</li>
+                        ))}
+                      </ul>
+                    )}
+
+                    {lote.invalidos > 0 && (
+                      <div className="mt-3 max-h-72 overflow-auto rounded-md border border-line">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-paper text-muted">
+                            <tr>
+                              <th className="px-3 py-2">Linha</th>
+                              <th className="px-3 py-2">Usuário</th>
+                              <th className="px-3 py-2">Problemas</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-line">
+                            {lote.linhas
+                              .filter((l) => !l.valido)
+                              .slice(0, 200)
+                              .map((l) => (
+                                <tr key={l.linha}>
+                                  <td className="px-3 py-2 font-mono">{l.linha}</td>
+                                  <td className="px-3 py-2 font-mono">{l.chave ?? "—"}</td>
+                                  <td className="px-3 py-2 text-red-700 dark:text-red-300">
+                                    {l.erros.map((e) => e.mensagem).join(" · ")}
+                                  </td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {lote.jsonl && (
+                      <>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <button
+                            onClick={() => baixarLote("jsonl")}
+                            className="rounded-md bg-action px-4 py-2 text-sm font-medium text-white transition hover:bg-action-hover"
+                          >
+                            Baixar JSONL (para o script)
+                          </button>
+                          <button
+                            onClick={() => baixarLote("json")}
+                            className="rounded-md border border-line px-4 py-2 text-sm text-ink transition hover:border-brand"
+                          >
+                            Baixar JSON (lista)
+                          </button>
+                        </div>
+                        <h3 className="mt-5 font-display text-sm font-bold text-ink">Como enviar</h3>
+                        <ol className="mt-2 list-decimal space-y-2 pl-5 text-xs text-muted">
+                          {(lote.instrucoes ?? []).map((i) => {
+                            const [primeira, ...resto] = i.split("\n");
+                            return (
+                              <li key={i} className="break-words">
+                                {primeira}
+                                {resto.length > 0 && (
+                                  <pre className="mt-1 overflow-auto rounded-md border border-line bg-paper p-2 font-mono text-[11px] text-ink">
+                                    {resto.join("\n")}
+                                  </pre>
+                                )}
+                              </li>
+                            );
+                          })}
+                        </ol>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {modo === "formulario" && abas.map((aba) => (
               <fieldset
                 key={aba}
                 className="mt-6 rounded-lg border border-line bg-surface p-4"
@@ -295,6 +524,7 @@ export default function GeradorDataServerPage() {
               </fieldset>
             ))}
 
+            {modo === "formulario" && (<>
             <p className="mt-3 text-xs text-muted">
               Campos em <strong>negrito</strong> são obrigatórios (igual à tela do RM).
               A senha não é gerada nem pedida por esta ferramenta.
@@ -307,10 +537,11 @@ export default function GeradorDataServerPage() {
             >
               {gerando ? "Gerando..." : "Validar e gerar prévia"}
             </button>
+            </>)}
           </>
         )}
 
-        {resultado && (
+        {modo === "formulario" && resultado && (
           <div className="mt-8 rounded-lg border border-line bg-surface p-4">
             <h2 className="font-display text-sm font-bold text-ink">Prévia -- {resultado.nome_arquivo}</h2>
             {resultado.avisos.length > 0 && (

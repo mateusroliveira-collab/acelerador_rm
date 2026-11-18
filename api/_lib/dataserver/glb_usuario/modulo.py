@@ -106,6 +106,33 @@ def _entrega(payload: dict, operacao: str) -> dict:
     }
 
 
+def _entrega_lote(operacao: str, nome_arquivo: str, total: int) -> list:
+    base = "https://<SEU_SERVIDOR>:<PORTA>/rmsrestdataserver/rest/GlbUsuarioData"
+    metodo = "Post" if operacao == "incluir" else "Put"
+    uri = f'"{base}"' if operacao == "incluir" else f'"{base}/$cod"'
+    linhas_script = ["$cred = Get-Credential   # pede usuário/senha do RM na hora; nada fica salvo"]
+    linhas_script.append('Get-Content ".\\' + nome_arquivo + '" -Encoding UTF8 | ForEach-Object {')
+    if operacao != "incluir":
+        linhas_script.append("    $cod = ($_ | ConvertFrom-Json).CODUSUARIO")
+    linhas_script.append(
+        f"    Invoke-RestMethod -Method {metodo} -Uri {uri} -Credential $cred "
+        "-ContentType 'application/json; charset=utf-8' "
+        "-Body ([Text.Encoding]::UTF8.GetBytes($_))"
+    )
+    linhas_script.append("}")
+    script = "\n".join(linhas_script)
+    return [
+        "Esta ferramenta NÃO envia nada ao RM: o envio é feito por você.",
+        f"Foram gerados {total} registro(s) válido(s), um JSON por linha no arquivo .jsonl (o REST do DataServer recebe um registro por chamada).",
+        "Linhas com erro ficam de fora do arquivo: corrija a planilha e gere de novo, ou envie só o que está válido.",
+        "Teste primeiro em homologação, com poucas linhas.",
+        "Exemplo de envio em PowerShell, na pasta onde salvou o arquivo "
+        "(ajuste servidor, porta e autenticação ao seu ambiente):\n" + script,
+        "Confira no RM (Usuários) se os registros foram criados/atualizados como esperado.",
+        "Nunca coloque usuário e senha do RM neste site nem nos arquivos gerados.",
+    ]
+
+
 MODULO = Modulo(
     chave="glb-usuario",
     nome="Cadastro de Usuário",
@@ -116,6 +143,8 @@ MODULO = Modulo(
     regras=_regras,
     avisos=_avisos,
     entrega=_entrega,
+    entrega_lote=_entrega_lote,
+    campo_chave="CODUSUARIO",
     nao_validado=(
         "Tamanhos máximos dos campos não foram confirmados (só há um teto geral de 255 caracteres).",
         "Os formatos de OBRIGAALTERARSENHA (1/0) e DIASEXPSENHA (inteiro) foram inferidos: o exemplo "
