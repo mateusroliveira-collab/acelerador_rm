@@ -71,3 +71,29 @@ def criar_tabelas():
     """Cria as tabelas que ainda não existem -- seguro rodar toda vez, não recria o que já existe."""
     from . import models  # noqa: F401 -- garante que os modelos foram importados antes de criar
     Base.metadata.create_all(bind=engine)
+    _adicionar_colunas_novas()
+
+
+# Colunas acrescentadas depois da criação inicial das tabelas. O create_all
+# não altera tabelas que já existem (ex.: a do Neon), então elas entram aqui.
+_COLUNAS_NOVAS = {
+    "xml_personalizado": [
+        ("excluido", "BOOLEAN NOT NULL DEFAULT FALSE"),
+        ("excluido_em", "TIMESTAMP"),
+    ],
+}
+
+
+def _adicionar_colunas_novas():
+    """ALTER TABLE ... ADD COLUMN só do que falta -- idempotente e não apaga dado."""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(engine)
+    for tabela, colunas in _COLUNAS_NOVAS.items():
+        if not insp.has_table(tabela):
+            continue
+        existentes = {c["name"] for c in insp.get_columns(tabela)}
+        for nome, ddl in colunas:
+            if nome not in existentes:
+                with engine.begin() as conn:
+                    conn.execute(text(f"ALTER TABLE {tabela} ADD COLUMN {nome} {ddl}"))

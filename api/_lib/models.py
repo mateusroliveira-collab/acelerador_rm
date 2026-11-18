@@ -4,6 +4,7 @@ Modelos de dados (tabelas) do banco.
 
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text
+from sqlalchemy.sql import false as sa_false
 
 from .db import Base
 
@@ -47,3 +48,6 @@ class XmlPersonalizado(Base):
     conteudo_original = Column(Text)
     conteudo_limpo = Column(Text)
     campos_zerados = Column(Integer, default=0)
+    # Exclusão reversível: a linha nunca é apagada, só marcada e escondida das buscas.
+    excluido = Column(Boolean, default=False, nullable=False, server_default=sa_false())
+    excluido_em = Column(DateTime, nullable=True)

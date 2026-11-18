@@ -9,6 +9,7 @@ orquestra: recebe a requisição, chama a lógica, devolve a resposta.
 
 import re
 import unicodedata
+from datetime import datetime
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Response, UploadFile, File
@@ -235,7 +236,11 @@ def baixar_xml_personalizado(xml_id: int):
     """Baixa a versão já higienizada de um XML personalizado pelo ID."""
     db = SessionLocal()
     try:
-        registro = db.query(XmlPersonalizado).filter(XmlPersonalizado.id == xml_id).first()
+        registro = (
+            db.query(XmlPersonalizado)
+            .filter(XmlPersonalizado.id == xml_id, XmlPersonalizado.excluido.isnot(True))
+            .first()
+        )
     finally:
         db.close()
 
@@ -247,6 +252,37 @@ def baixar_xml_personalizado(xml_id: int):
         _nome_limpo(registro.nome_arquivo),
         registro.campos_zerados or 0,
     )
+
+
+@router.delete("/personalizado/{xml_id}")
+def excluir_xml_personalizado(xml_id: int):
+    """
+    Exclusão REVERSÍVEL de um XML contribuído: marca como excluído, sem
+    apagar a linha. Só mexe em xml_personalizado -- os XMLs fixos da base
+    não têm id nem passam por aqui.
+    """
+    db = SessionLocal()
+    try:
+        registro = (
+            db.query(XmlPersonalizado)
+            .filter(XmlPersonalizado.id == xml_id, XmlPersonalizado.excluido.isnot(True))
+            .first()
+        )
+        if not registro:
+            raise HTTPException(status_code=404, detail="XML personalizado não encontrado.")
+        registro.excluido = True
+        registro.excluido_em = datetime.utcnow()
+        grupo, nome = registro.grupo, registro.nome_arquivo
+        db.commit()
+    finally:
+        db.close()
+
+    try:
+        registrar_uso("xml", "excluir-personalizado", {"id": xml_id, "grupo": grupo, "arquivo": nome})
+    except Exception:
+        pass
+
+    return {"id": xml_id, "excluido": True}
 
 
 @router.get("/grupos")
@@ -276,7 +312,7 @@ def pesquisar_global(q: str = ""):
             # Só as colunas leves: nunca carrega o conteúdo (Text) dos XMLs.
             linhas = db.query(
                 XmlPersonalizado.id, XmlPersonalizado.grupo, XmlPersonalizado.nome_arquivo
-            ).all()
+            ).filter(XmlPersonalizado.excluido.isnot(True)).all()
             personalizados = [
                 ItemXml(grupo=l.grupo, nome=l.nome_arquivo or "", personalizado=True, id=l.id)
                 for l in linhas
@@ -330,7 +366,9 @@ def buscar_arquivos(grupo: str, busca: str = ""):
     try:
         db = SessionLocal()
         try:
-            consulta = db.query(XmlPersonalizado).filter(XmlPersonalizado.grupo == grupo)
+            consulta = db.query(XmlPersonalizado).filter(
+                XmlPersonalizado.grupo == grupo, XmlPersonalizado.excluido.isnot(True)
+            )
             if termo:
                 # Escapa os curingas do LIKE: "_" é comum em nome de arquivo
                 # e, sem escape, casaria com qualquer caractere.
