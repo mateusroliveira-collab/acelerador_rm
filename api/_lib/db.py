@@ -58,20 +58,52 @@ for _prefixo in ("postgres://", "postgresql://"):
 
 _eh_sqlite = DATABASE_URL.startswith("sqlite")
 
-engine = create_engine(
-    DATABASE_URL,
-    pool_pre_ping=True,
-    connect_args={"check_same_thread": False} if _eh_sqlite else {},
-)
+if _eh_sqlite:
+    _opcoes_engine = {"connect_args": {"check_same_thread": False}}
+else:
+    # Serverless: poucas conexões por instância (cada uma é um slot no
+    # Neon), reciclagem antes do Neon derrubar conexão ociosa e falha
+    # rápida se o banco não responder. pre_ping continua: conexão
+    # congelada junto com a função pode ter sido fechada pelo servidor.
+    # Na Vercel, prefira a URL "-pooler" do Neon em DATABASE_URL.
+    _opcoes_engine = {
+        "pool_size": 2,
+        "max_overflow": 3,
+        "pool_recycle": 240,
+        "connect_args": {"connect_timeout": 10},
+    }
+
+engine = create_engine(DATABASE_URL, pool_pre_ping=True, **_opcoes_engine)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 
-def criar_tabelas():
-    """Cria as tabelas que ainda não existem -- seguro rodar toda vez, não recria o que já existe."""
-    from . import models  # noqa: F401 -- garante que os modelos foram importados antes de criar
-    Base.metadata.create_all(bind=engine)
-    _adicionar_colunas_novas()
+def _colunas_existentes() -> dict[str, set[str]]:
+    """
+    {tabela: {colunas}} das tabelas do projeto que já existem no banco.
+    No Postgres é UMA consulta (uma ida e volta ao Neon); o inspetor do
+    SQLAlchemy faria várias.
+    """
+    nomes = list(Base.metadata.tables)
+    if _eh_sqlite:
+        from sqlalchemy import inspect
+
+        insp = inspect(engine)
+        return {
+            t: {c["name"] for c in insp.get_columns(t)} for t in nomes if insp.has_table(t)
+        }
+
+    from sqlalchemy import bindparam, text
+
+    consulta = text(
+        "SELECT table_name, column_name FROM information_schema.columns "
+        "WHERE table_schema = current_schema() AND table_name IN :tabelas"
+    ).bindparams(bindparam("tabelas", expanding=True))
+    existentes: dict[str, set[str]] = {}
+    with engine.connect() as conn:
+        for tabela, coluna in conn.execute(consulta, {"tabelas": nomes}):
+            existentes.setdefault(tabela, set()).add(coluna)
+    return existentes
 
 
 # Colunas acrescentadas depois da criação inicial das tabelas. O create_all
@@ -84,16 +116,23 @@ _COLUNAS_NOVAS = {
 }
 
 
-def _adicionar_colunas_novas():
-    """ALTER TABLE ... ADD COLUMN só do que falta -- idempotente e não apaga dado."""
-    from sqlalchemy import inspect, text
+def criar_tabelas():
+    """
+    Garante tabelas e colunas -- seguro rodar toda vez, nunca apaga dado.
+    Roda no início a frio da função: com o schema já em dia, custa só
+    uma consulta ao banco.
+    """
+    from sqlalchemy import text
 
-    insp = inspect(engine)
+    from . import models  # noqa: F401 -- garante que os modelos foram importados antes de criar
+
+    existentes = _colunas_existentes()
+    if any(t not in existentes for t in Base.metadata.tables):
+        Base.metadata.create_all(bind=engine)
+        existentes = _colunas_existentes()
+
     for tabela, colunas in _COLUNAS_NOVAS.items():
-        if not insp.has_table(tabela):
-            continue
-        existentes = {c["name"] for c in insp.get_columns(tabela)}
         for nome, ddl in colunas:
-            if nome not in existentes:
+            if nome not in existentes.get(tabela, {nome}):
                 with engine.begin() as conn:
                     conn.execute(text(f"ALTER TABLE {tabela} ADD COLUMN {nome} {ddl}"))

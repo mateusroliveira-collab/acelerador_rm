@@ -1,0 +1,2 @@
+# Arquivos de referência que o código nunca lê (só .xml é listado)
+data/xml_base/**/*.txt

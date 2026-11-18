@@ -12,7 +12,7 @@ import unicodedata
 from datetime import datetime
 from urllib.parse import quote
 
-from fastapi import APIRouter, HTTPException, Response, UploadFile, File
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Response, UploadFile, File
 from pydantic import BaseModel
 
 from .. import config
@@ -72,7 +72,7 @@ class TextoMit41(BaseModel):
 
 
 @router.post("/sugerir-grupo")
-def sugerir_grupo_por_mit41(corpo: TextoMit41):
+def sugerir_grupo_por_mit41(corpo: TextoMit41, tarefas: BackgroundTasks):
     """
     Recebe um trecho colado da saída do interpretador de MIT 41 -- pode
     ser UM movimento ou o documento INTEIRO com vários -- separa cada
@@ -98,10 +98,7 @@ def sugerir_grupo_por_mit41(corpo: TextoMit41):
             status_code=400,
             detail="Não consegui reconhecer nenhum campo nesse texto. Confirma se é a saída do interpretador de MIT 41.",
         )
-    try:
-        registrar_uso("mit41", "sugerir-grupo", {"total_movimentos": len(resultados)})
-    except Exception:
-        pass
+    tarefas.add_task(registrar_uso, "mit41", "sugerir-grupo", {"total_movimentos": len(resultados)})
 
     return {"movimentos": resultados}
 
@@ -163,7 +160,7 @@ async def pre_processar_mit41_bruto(arquivo: UploadFile = File(...)):
 
 
 @router.post("/limpar-avulso")
-async def limpar_xml_avulso(arquivo: UploadFile = File(...)):
+async def limpar_xml_avulso(tarefas: BackgroundTasks, arquivo: UploadFile = File(...)):
     """Higieniza um XML enviado na hora, SEM salvar no banco ou disco."""
     conteudo_bytes = await arquivo.read()
     try:
@@ -179,10 +176,7 @@ async def limpar_xml_avulso(arquivo: UploadFile = File(...)):
 
     xml_limpo, campos_zerados = limpar_xml(conteudo_original)
 
-    try:
-        registrar_uso("xml", "limpar-avulso", {"campos_zerados": campos_zerados})
-    except Exception:
-        pass
+    tarefas.add_task(registrar_uso, "xml", "limpar-avulso", {"campos_zerados": campos_zerados})
 
     return _resposta_download_xml(xml_limpo, _nome_limpo(arquivo.filename), campos_zerados)
 
@@ -286,8 +280,11 @@ def excluir_xml_personalizado(xml_id: int):
 
 
 @router.get("/grupos")
-def listar_grupos():
+def listar_grupos(response: Response):
     """Devolve a lista de grupos de movimento disponíveis."""
+    # Lista fixa (só muda com deploy, que renova o cache da Vercel): o edge
+    # responde sem acordar a função Python.
+    response.headers["Cache-Control"] = "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400"
     return [
         {
             "codigo": codigo,
@@ -299,7 +296,7 @@ def listar_grupos():
 
 
 @router.get("/pesquisar")
-def pesquisar_global(q: str = ""):
+def pesquisar_global(tarefas: BackgroundTasks, q: str = ""):
     """Pesquisa por código e/ou descrição em TODOS os grupos de uma vez."""
     consulta = q.strip()[:200]
     if not consulta:
@@ -334,16 +331,14 @@ def pesquisar_global(q: str = ""):
         }
         for i in achados[:LIMITE_RESULTADOS]
     ]
-    try:
-        registrar_uso("xml", "pesquisar", {"busca": consulta, "total_encontrado": len(achados)})
-    except Exception:
-        pass
+    if len(consulta) >= 3:
+        tarefas.add_task(registrar_uso, "xml", "pesquisar", {"busca": consulta, "total_encontrado": len(achados)})
 
     return {"q": consulta, "total": len(achados), "resultados": resultados}
 
 
 @router.get("/buscar")
-def buscar_arquivos(grupo: str, busca: str = ""):
+def buscar_arquivos(tarefas: BackgroundTasks, grupo: str, busca: str = ""):
     """Lista os XMLs de um grupo, filtrando opcionalmente por nome."""
     if not config.grupo_existe(grupo):
         raise HTTPException(status_code=404, detail=f"Grupo '{grupo}' não encontrado.")
@@ -386,16 +381,13 @@ def buscar_arquivos(grupo: str, busca: str = ""):
         pass
 
     resultado = [{"nome": nome, "personalizado": False} for nome in arquivos_pasta] + personalizados
-    try:
-        registrar_uso("xml", "buscar", {"grupo": grupo, "busca": termo, "total_encontrado": len(resultado)})
-    except Exception:
-        pass
+    tarefas.add_task(registrar_uso, "xml", "buscar", {"grupo": grupo, "busca": termo, "total_encontrado": len(resultado)})
 
     return {"grupo": grupo, "arquivos": resultado}
 
 
 @router.post("/limpar")
-def limpar_arquivo(grupo: str, arquivo: str):
+def limpar_arquivo(tarefas: BackgroundTasks, grupo: str, arquivo: str):
     """Higieniza um XML específico da base fixa e devolve para download."""
     if not config.grupo_existe(grupo):
         raise HTTPException(status_code=404, detail=f"Grupo '{grupo}' não encontrado.")
@@ -420,9 +412,6 @@ def limpar_arquivo(grupo: str, arquivo: str):
         )
     xml_limpo, campos_zerados = limpar_xml(conteudo_original)
 
-    try:
-        registrar_uso("xml", "limpar", {"grupo": grupo, "arquivo": arquivo, "campos_zerados": campos_zerados})
-    except Exception:
-        pass
+    tarefas.add_task(registrar_uso, "xml", "limpar", {"grupo": grupo, "arquivo": arquivo, "campos_zerados": campos_zerados})
 
     return _resposta_download_xml(xml_limpo, _nome_limpo(caminho.name), campos_zerados)
