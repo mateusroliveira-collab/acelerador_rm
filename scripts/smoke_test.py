@@ -53,6 +53,13 @@ texto_mit41 = "[INICIO_MOVIMENTO]\nNOME_MOVIMENTO=Baixa de Estoque\n[FIM_MOVIMEN
 r = client.post("/api/xml/sugerir-grupo", json={"texto": texto_mit41})
 checar("POST /api/xml/sugerir-grupo", r.status_code == 200 and r.json()["movimentos"][0]["sugestoes"][0]["grupo"] == "4.1")
 
+r = client.get("/api/dataserver/modulos")
+checar("GET /api/dataserver/modulos", r.status_code == 200 and r.json()[0]["dataserver"] == "GlbUsuarioData")
+
+r = client.post("/api/dataserver/glb-usuario/gerar", json={"operacao": "incluir", "valores": {
+    "CODUSUARIO": "teste.smoke", "CODACESSO": "Acesso01", "DATAINICIO": "2026-01-01"}})
+checar("POST /api/dataserver/glb-usuario/gerar", r.status_code == 200 and r.json()["payload"]["STATUS"] == 1)
+
 print()
 if falhas:
     print(f"{len(falhas)} falha(s).")

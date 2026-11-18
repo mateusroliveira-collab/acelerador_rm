@@ -11,6 +11,7 @@ from ._lib.routers.cnab import router as cnab_router
 from ._lib.routers.registro_online_boleto import router as registro_online_router
 from ._lib.routers.registro_online_caixa import router as registro_online_caixa_router
 from ._lib.routers.log import router as log_router
+from ._lib.routers.dataserver import router as dataserver_router
 from ._lib.db import criar_tabelas
 
 app = FastAPI(title="Ferramentas RM")
@@ -21,6 +22,7 @@ app.include_router(cnab_router)
 app.include_router(registro_online_router)
 app.include_router(registro_online_caixa_router)
 app.include_router(log_router)
+app.include_router(dataserver_router)
 
 # Garante que as tabelas existem no banco de dados.
 # Se o banco estiver indisponível na inicialização, não derruba o app.

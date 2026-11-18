@@ -23,6 +23,13 @@ const ferramentas = [
     descricao: "Valide arquivos CNAB 240, 400 e registros online.",
     disponivel: true,
   },
+  {
+    href: "/gerador-dataserver",
+    codigo: "04",
+    titulo: "Gerador de DataServer",
+    descricao: "Gera e valida o payload do DataServer (ex.: cadastro de usuário).",
+    disponivel: true,
+  },
 ];
 
 export default function HomePage() {
@@ -38,7 +45,7 @@ export default function HomePage() {
           Agentes aceleradores
         </p>
 
-        <div className="mt-10 grid gap-4 sm:grid-cols-3">
+        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {ferramentas.map((f) => (
             <Link
               key={f.codigo}

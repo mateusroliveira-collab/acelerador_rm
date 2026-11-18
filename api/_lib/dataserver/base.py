@@ -1,0 +1,157 @@
+"""
+Núcleo comum do gerador de payload de DataServer do RM.
+
+A ferramenta SÓ gera e valida: não conecta ao RM, não guarda credencial e
+não grava os valores digitados em lugar nenhum. Cada módulo (um
+DataServer) descreve seus campos e como montar o payload; este arquivo
+cuida do que é comum -- validação por tipo e serialização.
+
+Pra criar um módulo novo: um subpacote em api/_lib/dataserver/<modulo>/
+que exporta um `MODULO` (ver glb_usuario/) e o registro em registro.py.
+"""
+
+import re
+from dataclasses import dataclass, field
+from datetime import date, datetime
+from typing import Any, Callable
+
+# Tipos de campo aceitos
+TEXTO, EMAIL, INTEIRO, BOOLEANO, DATA = "texto", "email", "inteiro", "booleano", "data"
+
+_RE_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+LIMITE_TEXTO_PADRAO = 255  # só um teto de sanidade; limites reais por campo, quando conhecidos
+
+
+@dataclass(frozen=True)
+class Campo:
+    nome: str  # nome do campo no DataServer (ex.: CODUSUARIO)
+    rotulo: str  # como aparece na tela do RM / do formulário
+    tipo: str = TEXTO
+    obrigatorio: bool = False
+    padrao: Any = None
+    ajuda: str = ""
+    aba: str = "Identificação"
+    tamanho_max: int | None = None
+    # Como o booleano vai no payload: "01" -> 1/0, "TF" -> "T"/"F"
+    formato_booleano: str = "01"
+
+    def para_dict(self) -> dict:
+        return {
+            "nome": self.nome, "rotulo": self.rotulo, "tipo": self.tipo,
+            "obrigatorio": self.obrigatorio, "padrao": self.padrao,
+            "ajuda": self.ajuda, "aba": self.aba, "tamanho_max": self.tamanho_max,
+        }
+
+
+@dataclass(frozen=True)
+class Modulo:
+    chave: str  # usada na URL (ex.: glb-usuario)
+    nome: str
+    dataserver: str  # nome do DataServer no RM (ex.: GlbUsuarioData)
+    descricao: str
+    campos: tuple[Campo, ...]
+    operacoes: tuple[str, ...]
+    # (valores normalizados, operacao) -> lista de erros extras {campo, mensagem}
+    regras: Callable[[dict, str], list[dict]] = lambda valores, operacao: []
+    # (valores normalizados, operacao) -> avisos (não bloqueiam)
+    avisos: Callable[[dict, str], list[str]] = lambda valores, operacao: []
+    # (payload, operacao) -> {"nome_arquivo": ..., "instrucoes": [...]}
+    entrega: Callable[[dict, str], dict] = lambda payload, operacao: {}
+    # Pontos do schema que ainda não foram confirmados contra o RM real.
+    nao_validado: tuple[str, ...] = field(default_factory=tuple)
+
+    def para_dict(self) -> dict:
+        return {
+            "chave": self.chave, "nome": self.nome, "dataserver": self.dataserver,
+            "descricao": self.descricao, "operacoes": list(self.operacoes),
+            "campos": [c.para_dict() for c in self.campos],
+            "nao_validado": list(self.nao_validado),
+        }
+
+
+def _vazio(v: Any) -> bool:
+    return v is None or (isinstance(v, str) and not v.strip())
+
+
+def _como_booleano(v: Any) -> bool | None:
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, (int, float)) and v in (0, 1):
+        return bool(v)
+    if isinstance(v, str) and v.strip().lower() in ("true", "t", "1", "sim", "s"):
+        return True
+    if isinstance(v, str) and v.strip().lower() in ("false", "f", "0", "nao", "não", "n"):
+        return False
+    return None
+
+
+def normalizar_e_validar(modulo: Modulo, valores: dict, operacao: str) -> tuple[dict, list[dict]]:
+    """
+    Converte o que veio do formulário pros tipos certos e valida campo a
+    campo. Devolve (valores normalizados, erros). Campo vazio vira None.
+    Campos desconhecidos são ignorados (o payload só leva campos do schema).
+    """
+    erros: list[dict] = []
+    saida: dict[str, Any] = {}
+
+    if operacao not in modulo.operacoes:
+        return {}, [{"campo": "operacao", "mensagem": f"Operação inválida: {operacao!r}."}]
+
+    for c in modulo.campos:
+        bruto = valores.get(c.nome, c.padrao)
+        if c.tipo == BOOLEANO:
+            if _vazio(bruto):
+                bruto = c.padrao
+            b = _como_booleano(bruto)
+            if b is None:
+                erros.append({"campo": c.nome, "mensagem": f"{c.rotulo}: valor inválido."})
+            saida[c.nome] = bool(b)
+            continue
+
+        if _vazio(bruto):
+            if c.obrigatorio:
+                erros.append({"campo": c.nome, "mensagem": f"{c.rotulo} é obrigatório."})
+            saida[c.nome] = None
+            continue
+
+        if c.tipo in (TEXTO, EMAIL):
+            texto = str(bruto).strip()
+            limite = c.tamanho_max or LIMITE_TEXTO_PADRAO
+            if len(texto) > limite:
+                erros.append({"campo": c.nome, "mensagem": f"{c.rotulo}: máximo de {limite} caracteres."})
+            if c.tipo == EMAIL and not _RE_EMAIL.match(texto):
+                erros.append({"campo": c.nome, "mensagem": f"{c.rotulo}: e-mail inválido."})
+            saida[c.nome] = texto
+        elif c.tipo == INTEIRO:
+            try:
+                n = int(str(bruto).strip())
+                if n < 0:
+                    raise ValueError
+                saida[c.nome] = n
+            except ValueError:
+                erros.append({"campo": c.nome, "mensagem": f"{c.rotulo}: informe um número inteiro positivo."})
+                saida[c.nome] = None
+        elif c.tipo == DATA:
+            try:
+                saida[c.nome] = (
+                    bruto if isinstance(bruto, date)
+                    else datetime.strptime(str(bruto).strip()[:10], "%Y-%m-%d").date()
+                )
+            except ValueError:
+                erros.append({"campo": c.nome, "mensagem": f"{c.rotulo}: data inválida (use AAAA-MM-DD)."})
+                saida[c.nome] = None
+
+    if not erros:
+        erros.extend(modulo.regras(saida, operacao))
+    return saida, erros
+
+
+def valor_no_payload(campo: Campo, valor: Any, fuso: str) -> Any:
+    """Serializa um valor normalizado pro formato do payload do RM."""
+    if campo.tipo == BOOLEANO:
+        if campo.formato_booleano == "TF":
+            return "T" if valor else "F"
+        return 1 if valor else 0
+    if campo.tipo == DATA:
+        return f"{valor.isoformat()}T00:00:00{fuso}"
+    return valor
