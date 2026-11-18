@@ -24,6 +24,7 @@ from ..mit41.pre_processador import (
     gerar_texto_para_ponte,
     extrair_indice_de_tabelas,
 )
+from ..pesquisa_xml import ItemXml, LIMITE_RESULTADOS, pesquisar
 from ..registro_uso import registrar_uso
 from ..db import SessionLocal
 from ..models import XmlPersonalizado
@@ -259,6 +260,50 @@ def listar_grupos():
         }
         for codigo, info in config.GRUPOS.items()
     ]
+
+
+@router.get("/pesquisar")
+def pesquisar_global(q: str = ""):
+    """Pesquisa por código e/ou descrição em TODOS os grupos de uma vez."""
+    consulta = q.strip()[:200]
+    if not consulta:
+        return {"q": "", "total": 0, "resultados": []}
+
+    personalizados = []
+    try:
+        db = SessionLocal()
+        try:
+            # Só as colunas leves: nunca carrega o conteúdo (Text) dos XMLs.
+            linhas = db.query(
+                XmlPersonalizado.id, XmlPersonalizado.grupo, XmlPersonalizado.nome_arquivo
+            ).all()
+            personalizados = [
+                ItemXml(grupo=l.grupo, nome=l.nome_arquivo or "", personalizado=True, id=l.id)
+                for l in linhas
+                if config.grupo_existe(l.grupo)
+            ]
+        finally:
+            db.close()
+    except Exception:
+        pass  # sem banco, a pesquisa segue só com os XMLs fixos
+
+    achados = pesquisar(consulta, personalizados)
+    resultados = [
+        {
+            "grupo": i.grupo,
+            "codigo": i.codigo,
+            "nome": i.nome,
+            "personalizado": i.personalizado,
+            **({"id": i.id} if i.personalizado else {}),
+        }
+        for i in achados[:LIMITE_RESULTADOS]
+    ]
+    try:
+        registrar_uso("xml", "pesquisar", {"busca": consulta, "total_encontrado": len(achados)})
+    except Exception:
+        pass
+
+    return {"q": consulta, "total": len(achados), "resultados": resultados}
 
 
 @router.get("/buscar")

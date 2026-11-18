@@ -1,0 +1,56 @@
+"""
+Smoke test: importa a API inteira (um erro de import derruba a função única
+da Vercel) e exercita as rotas principais de XML.
+
+Uso: python scripts/smoke_test.py   (sai com código != 0 se algo falhar)
+"""
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+RAIZ = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(RAIZ))
+# Banco descartável: nunca toca o dev.db nem o Neon durante o teste.
+os.environ.pop("VERCEL", None)
+for _v in ("DATABASE_URL", "POSTGRES_URL", "POSTGRES_PRISMA_URL", "DATABASE_URL_UNPOOLED", "PGHOST"):
+    os.environ.pop(_v, None)
+os.environ["DATABASE_URL"] = f"sqlite:///{tempfile.mkdtemp()}/smoke.db"
+
+from fastapi.testclient import TestClient  # noqa: E402
+
+from api.index import app  # noqa: E402  (falha aqui = erro de import em produção)
+
+client = TestClient(app)
+falhas = []
+
+
+def checar(nome, condicao):
+    print(("OK    " if condicao else "FALHA ") + nome)
+    if not condicao:
+        falhas.append(nome)
+
+
+r = client.get("/api/health")
+checar("GET /api/health", r.status_code == 200)
+
+r = client.get("/api/xml/grupos")
+checar("GET /api/xml/grupos", r.status_code == 200 and len(r.json()) >= 6)
+
+r = client.get("/api/xml/buscar", params={"grupo": "1.1"})
+checar("GET /api/xml/buscar", r.status_code == 200 and len(r.json()["arquivos"]) > 0)
+
+r = client.get("/api/xml/pesquisar", params={"q": "1.1.01"})
+checar("GET /api/xml/pesquisar (código)", r.status_code == 200 and r.json()["total"] > 0)
+
+r = client.get("/api/xml/pesquisar", params={"q": "requisicao"})
+checar("GET /api/xml/pesquisar (sem acento)", r.status_code == 200 and r.json()["total"] > 0)
+
+r = client.get("/api/xml/pesquisar", params={"q": ""})
+checar("GET /api/xml/pesquisar (vazio)", r.status_code == 200 and r.json()["total"] == 0)
+
+print()
+if falhas:
+    print(f"{len(falhas)} falha(s).")
+    sys.exit(1)
+print("Smoke test OK.")

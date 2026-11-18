@@ -6,6 +6,13 @@ import { baixarBlob, nomeLimpo } from "../lib/download";
 
 type Grupo = { codigo: string; label: string | null; descricao?: string | null };
 type ArquivoResultado = { nome: string; personalizado: boolean; id?: number };
+type ResultadoPesquisa = {
+  grupo: string;
+  codigo: string;
+  nome: string;
+  personalizado: boolean;
+  id?: number;
+};
 type SugestaoGrupo = { grupo: string; pontuacao: number; sinais: string[] };
 type MovimentoAnalisado = {
   nome_movimento: string | null;
@@ -36,6 +43,56 @@ export default function BuscadorXmlPage() {
     null
   );
   const [sugerindo, setSugerindo] = useState(false);
+
+  // Pesquisa global (todos os grupos)
+  const [pesquisa, setPesquisa] = useState("");
+  const [achados, setAchados] = useState<ResultadoPesquisa[] | null>(null);
+  const [totalAchados, setTotalAchados] = useState(0);
+  const [pesquisando, setPesquisando] = useState(false);
+  const idPesquisaAtual = useRef(0);
+  const listaRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const idPesquisa = ++idPesquisaAtual.current;
+    if (!pesquisa.trim()) {
+      setAchados(null);
+      setPesquisando(false);
+      return;
+    }
+    setPesquisando(true);
+    const timer = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ q: pesquisa });
+        const resposta = await fetch(`/api/xml/pesquisar?${params}`);
+        if (!resposta.ok) throw new Error();
+        const dados = await resposta.json();
+        if (idPesquisa === idPesquisaAtual.current) {
+          setAchados(dados.resultados ?? []);
+          setTotalAchados(dados.total ?? 0);
+        }
+      } catch {
+        if (idPesquisa === idPesquisaAtual.current) {
+          setAchados([]);
+          setTotalAchados(0);
+          setErro("Não foi possível pesquisar os movimentos.");
+        }
+      } finally {
+        if (idPesquisa === idPesquisaAtual.current) setPesquisando(false);
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [pesquisa]);
+
+  function irParaResultado(r: ResultadoPesquisa) {
+    setErro(null);
+    setGrupoSelecionado(r.grupo);
+    // Filtra o grupo pelo nome do arquivo (sem extensão) pra cair direto nele.
+    setBusca(r.nome.replace(/\.xml$/i, ""));
+    setTimeout(
+      () => listaRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+      300
+    );
+  }
 
   useEffect(() => {
     fetch("/api/xml/grupos")
@@ -323,8 +380,71 @@ export default function BuscadorXmlPage() {
           )}
         </div>
 
+        {/* Pesquisa global: acha o movimento em qualquer grupo, por código
+            (1.1.01 ou 1101) ou descrição, ignorando acentos e maiúsculas. */}
+        <div className="mt-10">
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <label className="sr-only" htmlFor="pesquisa-global">
+                Pesquisar movimento em todos os grupos
+              </label>
+              <input
+                id="pesquisa-global"
+                type="text"
+                value={pesquisa}
+                onChange={(e) => setPesquisa(e.target.value)}
+                placeholder="Pesquisar em todos os grupos: código (ex.: 1.1.01) ou descrição..."
+                className="w-full rounded-lg border border-line bg-surface px-4 py-3 text-ink placeholder:text-muted focus:border-brand"
+              />
+            </div>
+            {pesquisa && (
+              <button
+                onClick={() => setPesquisa("")}
+                className="shrink-0 rounded-lg border border-line bg-surface px-4 py-3 text-sm text-muted transition hover:border-brand hover:text-ink"
+              >
+                Limpar
+              </button>
+            )}
+          </div>
+
+          {achados !== null && (
+            <div className="mt-2 divide-y divide-line rounded-lg border border-line bg-surface">
+              {pesquisando && achados.length === 0 && (
+                <p className="px-4 py-4 text-center text-sm text-muted">Pesquisando...</p>
+              )}
+              {!pesquisando && achados.length === 0 && (
+                <p className="px-4 py-4 text-center text-sm text-muted">
+                  Nenhum movimento encontrado para &quot;{pesquisa}&quot;.
+                </p>
+              )}
+              {achados.map((r) => (
+                <button
+                  key={r.personalizado ? `p-${r.id}` : `b-${r.grupo}-${r.nome}`}
+                  onClick={() => irParaResultado(r)}
+                  className="flex w-full items-center gap-3 px-4 py-2 text-left transition hover:bg-paper"
+                >
+                  <span className="shrink-0 rounded bg-brand/20 px-2 py-0.5 font-mono text-xs font-bold text-brand-light">
+                    {r.grupo}
+                  </span>
+                  <span className="font-mono text-sm text-ink">{r.nome}</span>
+                  {r.personalizado && (
+                    <span className="rounded-full bg-brand/20 px-2 py-0.5 text-[10px] font-medium text-brand-light">
+                      contribuído
+                    </span>
+                  )}
+                </button>
+              ))}
+              {totalAchados > achados.length && (
+                <p className="px-4 py-2 text-xs text-muted">
+                  Mostrando {achados.length} de {totalAchados} -- refine a pesquisa.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* Seletor de grupo -- estilo fichário técnico */}
-        <div className="mt-10 grid grid-cols-3 gap-3 sm:grid-cols-6">
+        <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-6">
           {grupos.map((g) => (
             <button
               key={g.codigo}
@@ -417,7 +537,7 @@ export default function BuscadorXmlPage() {
         )}
 
         {/* Resultados */}
-        <div className="mt-6 divide-y divide-line rounded-lg border border-line bg-surface">
+        <div ref={listaRef} className="mt-6 divide-y divide-line rounded-lg border border-line bg-surface">
           {!grupoSelecionado && (
             <p className="px-4 py-8 text-center text-sm text-muted">
               Escolha um tipo de movimento acima para ver os arquivos
