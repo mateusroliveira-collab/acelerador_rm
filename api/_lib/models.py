@@ -4,7 +4,7 @@ Modelos de dados (tabelas) do banco.
 
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text
-from sqlalchemy.sql import false as sa_false
+from sqlalchemy.sql import false as sa_false, true as sa_true
 
 from .db import Base
 
@@ -51,3 +51,23 @@ class XmlPersonalizado(Base):
     # Exclusão reversível: a linha nunca é apagada, só marcada e escondida das buscas.
     excluido = Column(Boolean, default=False, nullable=False, server_default=sa_false())
     excluido_em = Column(DateTime, nullable=True)
+
+
+class Cliente(Base):
+    """
+    Configuração por cliente (preparação pra multi-cliente / produto).
+
+    `config` é um JSON por módulo do gerador de DataServer, ex.:
+      {"glb-usuario": {"codigos_acesso": ["Acesso01", "Acesso02"], "versao_rm": "12.1.2310"}}
+    Guarda só configuração -- NUNCA dado pessoal nem credencial. Não há rota
+    de escrita aberta: a manutenção é feita por scripts/cliente_config.py.
+    """
+
+    __tablename__ = "cliente"
+
+    id = Column(Integer, primary_key=True, index=True)
+    codigo = Column(String(50), unique=True, index=True, nullable=False)
+    nome = Column(String(200), nullable=True)
+    ativo = Column(Boolean, default=True, nullable=False, server_default=sa_true())
+    config = Column(Text, nullable=True)  # JSON
+    criado_em = Column(DateTime, default=datetime.utcnow)

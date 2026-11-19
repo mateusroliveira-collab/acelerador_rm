@@ -22,7 +22,9 @@ app.include_router(cnab_router)
 app.include_router(registro_online_router)
 app.include_router(registro_online_caixa_router)
 app.include_router(log_router)
-app.include_router(dataserver_router)
+# Gerador de DataServer: versão canônica /api/v1 + alias /api (compatibilidade)
+app.include_router(dataserver_router, prefix="/api/v1")
+app.include_router(dataserver_router, prefix="/api", include_in_schema=False)
 
 # Garante que as tabelas existem no banco de dados.
 # Se o banco estiver indisponível na inicialização, não derruba o app.

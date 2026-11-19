@@ -35,11 +35,12 @@ class Campo:
     # Como o booleano vai no payload: "01" -> 1/0, "TF" -> "T"/"F"
     formato_booleano: str = "01"
 
-    def para_dict(self) -> dict:
+    def para_dict(self, opcoes: list | None = None) -> dict:
         return {
             "nome": self.nome, "rotulo": self.rotulo, "tipo": self.tipo,
             "obrigatorio": self.obrigatorio, "padrao": self.padrao,
             "ajuda": self.ajuda, "aba": self.aba, "tamanho_max": self.tamanho_max,
+            "opcoes": opcoes,  # lista fechada de valores válidos (config do cliente) ou None
         }
 
 
@@ -61,14 +62,26 @@ class Modulo:
     nao_validado: tuple[str, ...] = field(default_factory=tuple)
     # Campo que identifica o registro (usado pra achar repetidos no lote).
     campo_chave: str | None = None
+    # Versão do schema do módulo: sobe quando campos/regras mudam. Vai nas
+    # respostas e no log, pra rastrear com qual versão cada arquivo foi gerado.
+    versao_schema: str = "1"
+    # chave da config do cliente -> campo validado contra essa lista
+    # (ex.: {"codigos_acesso": "CODACESSO"})
+    listas_config: dict = field(default_factory=dict)
     # (operacao, nome_arquivo, total_validos) -> instruções de envio do lote
     entrega_lote: Callable[[str, str, int], list] = lambda operacao, nome_arquivo, total: []
 
-    def para_dict(self) -> dict:
+    def para_dict(self, config: dict | None = None) -> dict:
+        por_campo = {campo: chave for chave, campo in self.listas_config.items()}
+        campos = []
+        for c in self.campos:
+            lista = (config or {}).get(por_campo.get(c.nome, ""))
+            campos.append(c.para_dict(list(lista) if isinstance(lista, list) and lista else None))
         return {
             "chave": self.chave, "nome": self.nome, "dataserver": self.dataserver,
+            "versao_schema": self.versao_schema,
             "descricao": self.descricao, "operacoes": list(self.operacoes),
-            "campos": [c.para_dict() for c in self.campos],
+            "campos": campos,
             "nao_validado": list(self.nao_validado),
             "lote": True,
         }
@@ -90,7 +103,9 @@ def _como_booleano(v: Any) -> bool | None:
     return None
 
 
-def normalizar_e_validar(modulo: Modulo, valores: dict, operacao: str) -> tuple[dict, list[dict]]:
+def normalizar_e_validar(
+    modulo: Modulo, valores: dict, operacao: str, config: dict | None = None
+) -> tuple[dict, list[dict]]:
     """
     Converte o que veio do formulário pros tipos certos e valida campo a
     campo. Devolve (valores normalizados, erros). Campo vazio vira None.
@@ -148,7 +163,25 @@ def normalizar_e_validar(modulo: Modulo, valores: dict, operacao: str) -> tuple[
 
     if not erros:
         erros.extend(modulo.regras(saida, operacao))
+        erros.extend(_validar_listas_config(modulo, saida, config))
     return saida, erros
+
+
+def _validar_listas_config(modulo: Modulo, valores: dict, config: dict | None) -> list[dict]:
+    """Valida campos contra as listas fechadas da config do cliente (se houver)."""
+    erros = []
+    rotulos = {c.nome: c.rotulo for c in modulo.campos}
+    for chave_cfg, campo in modulo.listas_config.items():
+        lista = (config or {}).get(chave_cfg)
+        valor = valores.get(campo)
+        if not isinstance(lista, list) or not lista or valor is None:
+            continue
+        if str(valor).strip().lower() not in {str(x).strip().lower() for x in lista}:
+            erros.append({
+                "campo": campo,
+                "mensagem": f"{rotulos.get(campo, campo)}: \"{valor}\" não está na lista de valores do cliente.",
+            })
+    return erros
 
 
 def valor_no_payload(campo: Campo, valor: Any, fuso: str) -> Any:

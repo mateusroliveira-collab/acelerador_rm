@@ -145,6 +145,8 @@ MODULO = Modulo(
     entrega=_entrega,
     entrega_lote=_entrega_lote,
     campo_chave="CODUSUARIO",
+    versao_schema="1",
+    listas_config={"codigos_acesso": "CODACESSO"},
     nao_validado=(
         "Tamanhos máximos dos campos não foram confirmados (só há um teto geral de 255 caracteres).",
         "Os formatos de OBRIGAALTERARSENHA (1/0) e DIASEXPSENHA (inteiro) foram inferidos: o exemplo "

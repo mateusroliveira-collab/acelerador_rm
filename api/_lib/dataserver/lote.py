@@ -81,6 +81,7 @@ def processar_lote(
     texto: str,
     operacao: str,
     gerar_payload: Callable[[dict], dict],
+    config: dict | None = None,
 ) -> dict:
     cabecalhos, linhas = parsear_tabela(texto)
     mapa, ignoradas = mapear_colunas(modulo, cabecalhos)
@@ -110,7 +111,7 @@ def processar_lote(
                     v = f"{m.group(3)}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
             if v != "":  # célula vazia deixa valer o padrão do campo
                 valores[nome] = v
-        normalizados, erros = normalizar_e_validar(modulo, valores, operacao)
+        normalizados, erros = normalizar_e_validar(modulo, valores, operacao, config)
 
         chave_reg = None
         if modulo.campo_chave and normalizados.get(modulo.campo_chave):
@@ -133,6 +134,7 @@ def processar_lote(
 
     validos = len(payloads)
     saida = {
+        "versao_schema": modulo.versao_schema,
         "total": len(linhas),
         "validos": validos,
         "invalidos": len(linhas) - validos,
