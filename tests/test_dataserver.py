@@ -104,6 +104,7 @@ def test_rota_modulos():
     assert r.status_code == 200
     m = r.json()[0]
     assert m["dataserver"] == "GlbUsuarioData" and m["campos"] and m["nao_validado"]
+    assert m["campo_chave"] == "CODUSUARIO"  # usado pelo PUT em lote no conector
 
 
 def test_rota_gerar_incluir_e_alterar():

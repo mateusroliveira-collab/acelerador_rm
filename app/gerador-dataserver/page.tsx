@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Header } from "../components/Header";
 import { baixarBlob } from "../lib/download";
+import { EnviarAoRm } from "./EnviarAoRm";
 
 type Campo = {
   nome: string;
@@ -18,6 +19,7 @@ type Modulo = {
   chave: string;
   nome: string;
   dataserver: string;
+  campo_chave?: string | null;
   descricao: string;
   operacoes: string[];
   campos: Campo[];
@@ -102,6 +104,16 @@ export default function GeradorDataServerPage() {
   const [linkClienteCopiado, setLinkClienteCopiado] = useState(false);
 
   const modulo = modulos.find((m) => m.chave === chave) ?? null;
+
+  // Registros válidos do lote (memorizado: o envio ao RM reinicia quando a lista muda).
+  const registrosLote = useMemo<Record<string, unknown>[]>(() => {
+    try {
+      const lista = JSON.parse(lote?.json ?? "[]");
+      return Array.isArray(lista) ? lista : [];
+    } catch {
+      return [];
+    }
+  }, [lote]);
 
   function carregarModulos(codigoCliente: string, manterSelecao: boolean) {
     const q = codigoCliente.trim() ? `?cliente=${encodeURIComponent(codigoCliente.trim())}` : "";
@@ -658,7 +670,17 @@ export default function GeradorDataServerPage() {
                             </button>
                           )}
                         </div>
-                        <h3 className="mt-5 font-display text-sm font-bold text-ink">Como enviar</h3>
+                        {modulo && registrosLote.length > 0 && (
+                          <EnviarAoRm
+                            dataserver={modulo.dataserver}
+                            campoChave={modulo.campo_chave ?? null}
+                            operacao={operacao}
+                            registros={registrosLote}
+                          />
+                        )}
+                        <h3 className="mt-5 font-display text-sm font-bold text-ink">
+                          Ou envie pelo script (sem o conector)
+                        </h3>
                         <ol className="mt-2 list-decimal space-y-2 pl-5 text-xs text-muted">
                           {(lote.instrucoes ?? []).map((i) => {
                             const [primeira, ...resto] = i.split("\n");

@@ -81,7 +81,7 @@ class Modulo:
             campos.append(c.para_dict(list(lista) if isinstance(lista, list) and lista else None))
         return {
             "chave": self.chave, "nome": self.nome, "dataserver": self.dataserver,
-            "versao_schema": self.versao_schema,
+            "versao_schema": self.versao_schema, "campo_chave": self.campo_chave,
             "descricao": self.descricao, "operacoes": list(self.operacoes),
             "campos": campos,
             "nao_validado": list(self.nao_validado),
