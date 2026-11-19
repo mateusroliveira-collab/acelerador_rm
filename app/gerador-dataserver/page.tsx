@@ -22,6 +22,7 @@ type Modulo = {
   operacoes: string[];
   campos: Campo[];
   nao_validado: string[];
+  planilha_modelo_url?: string | null;
 };
 type Valores = Record<string, string | boolean>;
 type Resultado = {
@@ -76,7 +77,6 @@ export default function GeradorDataServerPage() {
   const [modulos, setModulos] = useState<Modulo[]>([]);
   // Código do cliente (opcional): aplica a configuração dele (ex.: lista de códigos de acesso).
   const [cliente, setCliente] = useState("");
-  const [scriptCopiado, setScriptCopiado] = useState<string | null>(null);
   const [chave, setChave] = useState<string | null>(null);
   const [operacao, setOperacao] = useState("incluir");
   const [valores, setValores] = useState<Valores>({});
@@ -87,11 +87,12 @@ export default function GeradorDataServerPage() {
   const [copiado, setCopiado] = useState(false);
 
   // Modo lote (planilha)
-  const [modo, setModo] = useState<"formulario" | "lote">("formulario");
+  const [modo, setModo] = useState<"formulario" | "lote">("lote");
   const [textoLote, setTextoLote] = useState("");
   const [nomeArquivoLote, setNomeArquivoLote] = useState<string | null>(null);
   const [lote, setLote] = useState<ResultadoLote | null>(null);
   const [processandoLote, setProcessandoLote] = useState(false);
+  const [relatorioCopiado, setRelatorioCopiado] = useState(false);
 
   const modulo = modulos.find((m) => m.chave === chave) ?? null;
 
@@ -117,23 +118,6 @@ export default function GeradorDataServerPage() {
     carregarModulos("", false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  async function copiarArquivoSheets(qual: "script" | "manifesto") {
-    setErro(null);
-    try {
-      const url =
-        qual === "script"
-          ? `/api/v1/dataserver/google-sheets/script?base=${encodeURIComponent(window.location.origin)}`
-          : "/api/v1/dataserver/google-sheets/manifesto";
-      const resposta = await fetch(url);
-      if (!resposta.ok) throw new Error();
-      await navigator.clipboard.writeText(await resposta.text());
-      setScriptCopiado(qual);
-      setTimeout(() => setScriptCopiado(null), 2000);
-    } catch {
-      setErro("Não foi possível copiar o arquivo do Google Sheets.");
-    }
-  }
 
   function trocarModulo(nova: string) {
     const m = modulos.find((x) => x.chave === nova);
@@ -233,6 +217,35 @@ export default function GeradorDataServerPage() {
     } catch {
       setErro("Não foi possível baixar o modelo.");
     }
+  }
+
+  // Relatório de erros pra devolver ao cliente corrigir a planilha.
+  function textoRelatorio(): string {
+    if (!lote) return "";
+    return lote.linhas
+      .filter((l) => !l.valido)
+      .map((l) => `Linha ${l.linha}${l.chave ? ` (${l.chave})` : ""}: ${l.erros.map((e) => e.mensagem).join(" · ")}`)
+      .join("\n");
+  }
+
+  async function copiarRelatorio() {
+    try {
+      await navigator.clipboard.writeText(textoRelatorio());
+      setRelatorioCopiado(true);
+      setTimeout(() => setRelatorioCopiado(false), 1500);
+    } catch {
+      setErro("Não foi possível copiar -- use o botão de baixar o relatório.");
+    }
+  }
+
+  function baixarRelatorioCsv() {
+    if (!lote) return;
+    const aspas = (v: string) => `"${v.replace(/"/g, '""')}"`;
+    const linhas = lote.linhas
+      .filter((l) => !l.valido)
+      .map((l) => [String(l.linha), l.chave ?? "", l.erros.map((e) => e.mensagem).join(" | ")].map(aspas).join(";"));
+    const csv = "\ufeff" + ["Linha;Usuário;Problemas", ...linhas].join("\r\n") + "\r\n";
+    baixarBlob(new Blob([csv], { type: "text/csv;charset=utf-8" }), "relatorio_de_erros.csv");
   }
 
   function baixarLote(formato: "jsonl" | "json") {
@@ -363,7 +376,7 @@ export default function GeradorDataServerPage() {
             </div>
 
             <div className="mt-6 flex gap-2 text-sm">
-              {(["formulario", "lote"] as const).map((m) => (
+              {(["lote", "formulario"] as const).map((m) => (
                 <button
                   key={m}
                   onClick={() => {
@@ -389,6 +402,28 @@ export default function GeradorDataServerPage() {
                   500 linhas. O cabeçalho aceita o nome do campo (ex.: CODUSUARIO) ou o rótulo
                   da tela. Datas podem estar em DD/MM/AAAA. Nada do que você cola é salvo.
                 </p>
+                {modulo.planilha_modelo_url ? (
+                  <div className="mt-3 rounded-md border border-line bg-paper p-3">
+                    <a
+                      href={modulo.planilha_modelo_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-block rounded-md bg-action px-4 py-2 text-sm font-medium text-white transition hover:bg-action-hover"
+                    >
+                      Abrir planilha modelo (Google Sheets)
+                    </a>
+                    <p className="mt-2 text-xs text-muted">
+                      Abre a tela &quot;Fazer uma cópia&quot;. Preencha os códigos de acesso do cliente na aba
+                      &quot;Listas&quot;, compartilhe a cópia com o cliente, e depois cole aqui as linhas
+                      preenchidas (Ctrl+A, Ctrl+C na aba &quot;Dados&quot;).
+                    </p>
+                  </div>
+                ) : (
+                  <p className="mt-3 text-xs text-muted">
+                    O link da planilha modelo ainda não foi configurado (variável de ambiente
+                    PLANILHA_MODELO_GLB_USUARIO). Enquanto isso, baixe o modelo CSV abaixo.
+                  </p>
+                )}
                 <div className="mt-3 flex flex-wrap items-center gap-3">
                   <button
                     onClick={baixarModelo}
@@ -441,6 +476,23 @@ export default function GeradorDataServerPage() {
                           <li key={a}>{a}</li>
                         ))}
                       </ul>
+                    )}
+
+                    {lote.invalidos > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          onClick={copiarRelatorio}
+                          className="rounded-md border border-line px-3 py-1.5 text-xs text-ink transition hover:border-brand"
+                        >
+                          {relatorioCopiado ? "Relatório copiado!" : "Copiar relatório de erros"}
+                        </button>
+                        <button
+                          onClick={baixarRelatorioCsv}
+                          className="rounded-md border border-line px-3 py-1.5 text-xs text-ink transition hover:border-brand"
+                        >
+                          Baixar relatório (CSV)
+                        </button>
+                      </div>
                     )}
 
                     {lote.invalidos > 0 && (
@@ -609,42 +661,6 @@ export default function GeradorDataServerPage() {
             </>)}
           </>
         )}
-
-        <details className="mt-10 rounded-lg border border-line bg-surface px-4 py-3 text-sm">
-          <summary className="cursor-pointer font-display font-bold text-ink">
-            Modelo para Google Sheets (o cliente preenche, você valida aqui)
-          </summary>
-          <p className="mt-3 text-xs text-muted">
-            Uma planilha-modelo no Google Sheets, com cabeçalho travado e listas/datas validadas, que
-            valida os dados nesta API e pinta as células com erro. O cliente só preenche; você corrige e
-            gera o arquivo para o RM. Nada é enviado ao RM.
-          </p>
-          <ol className="mt-3 list-decimal space-y-1 pl-5 text-xs text-muted">
-            <li>Crie uma planilha no seu Google Drive e abra <strong>Extensões &gt; Apps Script</strong>.</li>
-            <li>Nas configurações do projeto, marque <em>Mostrar arquivo de manifesto appsscript.json</em>.</li>
-            <li>Cole o <strong>manifesto</strong> em <code>appsscript.json</code> e o <strong>script</strong> em <code>Codigo.gs</code> (botões abaixo).</li>
-            <li>Salve, recarregue a planilha e use o menu <strong>Acelerador RM</strong>: Configurar, Montar modelo.</li>
-            <li>Para cada cliente: <strong>Arquivo &gt; Fazer uma cópia</strong> e compartilhe a cópia.</li>
-          </ol>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button
-              onClick={() => copiarArquivoSheets("script")}
-              className="rounded-md bg-action px-4 py-2 text-xs font-medium text-white transition hover:bg-action-hover"
-            >
-              {scriptCopiado === "script" ? "Script copiado!" : "Copiar script (Codigo.gs)"}
-            </button>
-            <button
-              onClick={() => copiarArquivoSheets("manifesto")}
-              className="rounded-md border border-line px-4 py-2 text-xs text-ink transition hover:border-brand"
-            >
-              {scriptCopiado === "manifesto" ? "Manifesto copiado!" : "Copiar manifesto (appsscript.json)"}
-            </button>
-          </div>
-          <p className="mt-3 text-xs text-muted">
-            O script vem já apontando para este endereço ({typeof window !== "undefined" ? window.location.origin : ""}).
-            Detalhes, permissões e roteiro de teste: <code>google-sheets/README.md</code> e <code>docs/CONFIGURACAO_CONSOLES.md</code> no repositório.
-          </p>
-        </details>
 
         {modo === "formulario" && resultado && (
           <div className="mt-8 rounded-lg border border-line bg-surface p-4">

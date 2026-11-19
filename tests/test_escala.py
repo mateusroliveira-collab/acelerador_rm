@@ -154,10 +154,10 @@ def test_versao_do_schema_nas_respostas_e_no_log_sem_dados_pessoais():
         db.close()
 
 
-# --- Google Sheets ----------------------------------------------------------------------
+# --- Planilha modelo (Google Sheets) ---------------------------------------------------
 
 def test_contrato_com_o_sheets_valores_como_a_planilha_mostra():
-    """O script envia getDisplayValues(): 'Sim'/'Não', datas dd/MM/yyyy, cabeçalho = nome do campo."""
+    """Colar da planilha traz o texto exibido: 'Sim'/'Não', datas dd/MM/yyyy, cabeçalho = nome do campo."""
     texto = "\n".join([
         "\t".join(["CODUSUARIO", "NOME", "EMAIL", "CODACESSO", "STATUS", "OIDC_ENABLED", "DATAINICIO", "DATAEXPIRACAO"]),
         "\t".join(["ana.teste", "Ana", "ana@exemplo.com", "Acesso01", "Sim", "Não", "18/11/2026", ""]),
@@ -173,7 +173,7 @@ def test_contrato_com_o_sheets_valores_como_a_planilha_mostra():
     assert corpo["versao_schema"] == "1"
 
 
-def test_erro_do_lote_traz_campo_e_numero_de_linha_para_o_script_pintar():
+def test_erro_do_lote_traz_campo_e_numero_de_linha_da_planilha():
     texto = "CODUSUARIO\tCODACESSO\tDATAINICIO\nana\tAcesso01\t18/11/2026\nbia\t\t99/99/2026"
     corpo = client.post(f"{V1}/glb-usuario/lote", json={"operacao": "incluir", "texto": texto}).json()
     ruim = corpo["linhas"][1]
@@ -181,26 +181,49 @@ def test_erro_do_lote_traz_campo_e_numero_de_linha_para_o_script_pintar():
     assert {e["campo"] for e in ruim["erros"]} == {"CODACESSO", "DATAINICIO"}
 
 
-def test_script_do_sheets_vem_com_o_endereco_da_api():
-    r = client.get(f"{V1}/google-sheets/script", params={"base": "https://meu-app.vercel.app"})
-    assert r.status_code == 200 and r.headers["content-type"].startswith("text/plain")
-    assert "https://meu-app.vercel.app" in r.text and "__API_BASE__" not in r.text.split("API_BASE_PADRAO = ")[1][:60]
-    assert "function montarModelo" in r.text and "function validar" in r.text
+# Cabeçalhos exatamente como estão na planilha modelo (rótulos da tela do RM; * = obrigatório).
+CABECALHOS_PLANILHA = [
+    "Usuário *", "Nome", "Nome Social", "E-Mail", "Código de Acesso *", "Ativo", "Login OIDC *",
+    "Alterar senha no próximo login", "Força a troca de senha a cada (dias)", "Início de Validade *",
+    "Expiração de Validade", "Usuário de rede", "Domínio de rede", "Ignorar autenticação LDAP",
+]
 
 
-@pytest.mark.parametrize("base", ["javascript:alert(1)", "https://x.com/'; evil()//", "ftp://x.com", "meu-app.com", "https://a b.com"])
-def test_endereco_base_malicioso_e_recusado(base):
-    assert client.get(f"{V1}/google-sheets/script", params={"base": base}).status_code == 400
+def test_cabecalhos_da_planilha_modelo_mapeiam_todos_os_campos():
+    from api._lib.dataserver.glb_usuario import MODULO
+    from api._lib.dataserver.lote import mapear_colunas
+
+    mapa, ignoradas = mapear_colunas(MODULO, CABECALHOS_PLANILHA)
+    assert ignoradas == []
+    assert [mapa[i] for i in range(len(CABECALHOS_PLANILHA))] == [c.nome for c in MODULO.campos]
 
 
-def test_manifesto_so_pede_permissoes_minimas():
-    m = client.get(f"{V1}/google-sheets/manifesto").json()
-    assert m["runtimeVersion"] == "V8"
-    assert all("drive" not in s and "gmail" not in s for s in m["oauthScopes"])
-    assert "https://www.googleapis.com/auth/spreadsheets.currentonly" in m["oauthScopes"]
+def test_colar_a_planilha_modelo_inteira_funciona_ponta_a_ponta():
+    linhas = [
+        "\t".join(CABECALHOS_PLANILHA),
+        "\t".join(["maria.silva", "Maria Silva", "", "maria@exemplo.com", "Acesso01", "Sim", "Não", "Sim", "", "01/12/2026", "", "", "", "Não"]),
+        "\t".join(["", "", "", "", "", "", "", "", "", "", "", "", "", ""]),  # linha vazia da planilha
+    ]
+    r = client.post(f"{V1}/glb-usuario/lote", json={"operacao": "incluir", "texto": "\n".join(linhas)})
+    corpo = r.json()
+    assert r.status_code == 200 and (corpo["validos"], corpo["invalidos"], corpo["total"]) == (1, 0, 1)
+    assert corpo["avisos_gerais"] == []
 
 
-def test_script_nao_contem_segredo_nem_chama_o_rm():
-    fonte = (Path(__file__).resolve().parent.parent / "google-sheets" / "Codigo.gs").read_text(encoding="utf-8")
-    assert "rmsrestdataserver" not in fonte  # o script nunca fala com o RM
-    assert "setProperty('API_KEY'" in fonte and "getUserProperties" in fonte  # chave só no usuário
+@pytest.mark.parametrize("env,esperado", [
+    ("https://docs.google.com/spreadsheets/d/1q053_56zJQWJ3FTkN7V3vhVffT-KExQpqDD93QBQwvU/edit?pli=1&gid=0#gid=0",
+     "https://docs.google.com/spreadsheets/d/1q053_56zJQWJ3FTkN7V3vhVffT-KExQpqDD93QBQwvU/copy"),
+    ("", None),
+    ("https://evil.example.com/spreadsheets/d/1q053_56zJQWJ3FTkN7V3vhVffT-KExQpqDD93QBQwvU", None),
+    ("javascript:alert(1)", None),
+    ("http://docs.google.com/spreadsheets/d/1q053_56zJQWJ3FTkN7V3vhVffT-KExQpqDD93QBQwvU", None),
+])
+def test_link_da_planilha_modelo(monkeypatch, env, esperado):
+    monkeypatch.setenv("PLANILHA_MODELO_GLB_USUARIO", env)
+    modulo = client.get(f"{V1}/modulos").json()[0]
+    assert modulo["planilha_modelo_url"] == esperado
+
+
+def test_rotas_do_apps_script_foram_removidas():
+    assert client.get(f"{V1}/google-sheets/script", params={"base": "https://x.com"}).status_code == 404
+    assert client.get(f"{V1}/google-sheets/manifesto").status_code == 404

@@ -15,6 +15,7 @@ Em **Project > Settings > Environment Variables** (ambiente *Production*; repita
 | Variável | Obrigatória | Valor |
 |---|---|---|
 | `DATABASE_URL` | **Sim** | URL *pooled* do Neon (passo 1) |
+| `PLANILHA_MODELO_GLB_USUARIO` | Não | Link da planilha-modelo no Google Sheets (seção 4). Sem ele, a tela mostra só o modelo CSV |
 | `API_KEYS` | Não | `chave1:clienteA,chave2:clienteB` (chaves longas e aleatórias) |
 | `API_EXIGIR_CHAVE` | Não | `1` para recusar chamadas sem chave (ver aviso abaixo) |
 | `RATE_LIMIT_POR_MINUTO` | Não | ex.: `120` (limite aproximado por instância) |
@@ -40,23 +41,24 @@ python scripts/cliente_config.py listar
 O script mostra o servidor de destino (sem usuário/senha) antes de gravar.
 Guarde **somente configuração** (códigos de acesso, versão do RM) — nunca dado pessoal.
 
-## 4. Google (Apps Script) — para a planilha no Google Sheets
-**Não é preciso criar projeto no Google Cloud Console.** O script fica "preso" à planilha
-(*container-bound*) e usa só permissões da conta de quem o executa.
+## 4. Planilha-modelo no Google Sheets (para o cliente preencher)
+**Não há script, nem projeto no Google Cloud, nem chave.** A planilha é um arquivo comum no seu Drive;
+o app só guarda o **link** dela.
 
-- [ ] Crie a planilha-modelo no seu Google Drive.
-- [ ] **Extensões > Apps Script**. Em **Configurações do projeto**, marque
-      *Mostrar arquivo de manifesto "appsscript.json" no editor*.
-- [ ] Cole o conteúdo de `appsscript.json` (baixe na tela do Gerador de DataServer, ou use o arquivo
-      de `google-sheets/`) e o de `Codigo.gs` (baixe **pela tela do Gerador**: ele já vem com o endereço da API).
-- [ ] Salve, recarregue a planilha: aparece o menu **Acelerador RM**.
-- [ ] Na primeira execução o Google pede autorização e mostra *"app não verificado"*: é esperado para
-      um script seu. **Avançado > Acessar (não seguro) > Permitir**. As permissões pedidas são só:
-      planilha atual, janelas do menu, chamadas externas e e-mail da conta.
-- [ ] Siga o roteiro de teste em `google-sheets/README.md`.
+- [ ] Crie a planilha no seu Google Drive e monte conforme `docs/PLANILHA_MODELO.md`
+      (abas Dados, Listas e Instruções; cabeçalhos, validações e proteção).
+- [ ] **Compartilhar > Acesso geral > "Qualquer pessoa com o link" > Leitor.**
+      (É o que permite ao cliente abrir o link de cópia. A planilha-modelo não tem dados de ninguém.)
+- [ ] Copie o link da barra de endereços e cadastre na Vercel como `PLANILHA_MODELO_GLB_USUARIO`
+      (seção 2). Faça um **Redeploy**.
+- [ ] Abra o Gerador de DataServer: aparece o botão **Abrir planilha modelo**, que leva à tela
+      "Fazer uma cópia" do Google.
 
-Para publicar além da sua organização (produto), o caminho correto é um **Add-on** com revisão do Google —
-projeto à parte, fora deste escopo.
+**Fluxo por cliente (recomendado):** abra o botão, faça a cópia, edite a aba **Listas** com os códigos
+de acesso do cliente e **compartilhe a cópia com o cliente como _Editor_**. Assim o cliente não é dono
+da planilha e **não consegue alterar o cabeçalho nem as abas protegidas**. Se você mandar direto o link de cópia, o
+cliente vira dono da cópia dele e pode mexer em tudo — funciona, mas a ferramenta é que garante a qualidade,
+porque valida tudo de novo ao receber os dados.
 
 ## 5. GitHub
 - [ ] O `.gitignore` já ignora `.env`, `.env.local` e `*.db`. Confira com `git status` que nenhum
