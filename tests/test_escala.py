@@ -227,3 +227,21 @@ def test_link_da_planilha_modelo(monkeypatch, env, esperado):
 def test_rotas_do_apps_script_foram_removidas():
     assert client.get(f"{V1}/google-sheets/script", params={"base": "https://x.com"}).status_code == 404
     assert client.get(f"{V1}/google-sheets/manifesto").status_code == 404
+
+
+def test_links_da_planilha_modelo_copia_e_download(monkeypatch):
+    id_ = "1q053_56zJQWJ3FTkN7V3vhVffT-KExQpqDD93QBQwvU"
+    monkeypatch.setenv("PLANILHA_MODELO_GLB_USUARIO", f"https://docs.google.com/spreadsheets/d/{id_}/edit?gid=0")
+    m = client.get(f"{V1}/modulos").json()[0]
+    assert m["planilha_modelo_url"] == f"https://docs.google.com/spreadsheets/d/{id_}/copy"
+    assert m["planilha_modelo_xlsx_url"] == f"https://docs.google.com/spreadsheets/d/{id_}/export?format=xlsx"
+
+    monkeypatch.setenv("PLANILHA_MODELO_GLB_USUARIO", "https://evil.example.com/x")
+    m = client.get(f"{V1}/modulos").json()[0]
+    assert m["planilha_modelo_url"] is None and m["planilha_modelo_xlsx_url"] is None
+
+
+def test_modelo_csv_publico_passa_na_propria_validacao():
+    csv = client.get(f"{V1}/glb-usuario/modelo-csv").content.decode("utf-8-sig")
+    r = client.post(f"{V1}/glb-usuario/lote", json={"operacao": "incluir", "texto": csv})
+    assert r.json()["validos"] == 1

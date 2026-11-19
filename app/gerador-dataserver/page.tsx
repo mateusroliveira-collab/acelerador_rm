@@ -23,6 +23,7 @@ type Modulo = {
   campos: Campo[];
   nao_validado: string[];
   planilha_modelo_url?: string | null;
+  planilha_modelo_xlsx_url?: string | null;
 };
 type Valores = Record<string, string | boolean>;
 type Resultado = {
@@ -93,6 +94,7 @@ export default function GeradorDataServerPage() {
   const [lote, setLote] = useState<ResultadoLote | null>(null);
   const [processandoLote, setProcessandoLote] = useState(false);
   const [relatorioCopiado, setRelatorioCopiado] = useState(false);
+  const [linkClienteCopiado, setLinkClienteCopiado] = useState(false);
 
   const modulo = modulos.find((m) => m.chave === chave) ?? null;
 
@@ -226,6 +228,17 @@ export default function GeradorDataServerPage() {
       .filter((l) => !l.valido)
       .map((l) => `Linha ${l.linha}${l.chave ? ` (${l.chave})` : ""}: ${l.erros.map((e) => e.mensagem).join(" · ")}`)
       .join("\n");
+  }
+
+  // Endereço da página pública que o analista manda ao cliente.
+  async function copiarLinkCliente() {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/planilha-modelo`);
+      setLinkClienteCopiado(true);
+      setTimeout(() => setLinkClienteCopiado(false), 1500);
+    } catch {
+      setErro("Não foi possível copiar o link.");
+    }
   }
 
   async function copiarRelatorio() {
@@ -417,6 +430,23 @@ export default function GeradorDataServerPage() {
                       &quot;Listas&quot;, compartilhe a cópia com o cliente, e depois cole aqui as linhas
                       preenchidas (Ctrl+A, Ctrl+C na aba &quot;Dados&quot;).
                     </p>
+                    <div className="mt-3 border-t border-line pt-3">
+                      <p className="text-xs text-muted">
+                        <strong>Para enviar ao cliente:</strong> mande o endereço da página do modelo. Ele
+                        escolhe entre criar a própria cópia no Google ou baixar o arquivo (Excel/CSV).
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <code className="rounded border border-line bg-surface px-2 py-1 text-xs text-ink">
+                          {typeof window !== "undefined" ? `${window.location.origin}/planilha-modelo` : "/planilha-modelo"}
+                        </code>
+                        <button
+                          onClick={copiarLinkCliente}
+                          className="rounded-md border border-line px-3 py-1.5 text-xs text-ink transition hover:border-brand"
+                        >
+                          {linkClienteCopiado ? "Link copiado!" : "Copiar link para o cliente"}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 ) : (
                   <p className="mt-3 text-xs text-muted">

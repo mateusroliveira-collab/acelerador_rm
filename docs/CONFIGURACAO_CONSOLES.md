@@ -52,7 +52,10 @@ o app só guarda o **link** dela.
 - [ ] Copie o link da barra de endereços e cadastre na Vercel como `PLANILHA_MODELO_GLB_USUARIO`
       (seção 2). Faça um **Redeploy**.
 - [ ] Abra o Gerador de DataServer: aparece o botão **Abrir planilha modelo**, que leva à tela
-      "Fazer uma cópia" do Google.
+      "Fazer uma cópia" do Google, e o botão **Copiar link para o cliente**.
+- [ ] O link para o cliente é a **página pública** `https://SEU-APP.vercel.app/planilha-modelo`: nela o
+      cliente escolhe **Criar minha cópia no Google Sheets** (cada clique gera uma planilha separada, na conta
+      dele), **Baixar em Excel** ou **Baixar em CSV**. A página não tem ferramenta de validação nem recebe dados.
 
 **Fluxo por cliente (recomendado):** abra o botão, faça a cópia, edite a aba **Listas** com os códigos
 de acesso do cliente e **compartilhe a cópia com o cliente como _Editor_**. Assim o cliente não é dono

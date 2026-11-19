@@ -19,7 +19,7 @@ from ..clientes import config_do_cliente
 from ..dataserver.base import normalizar_e_validar
 from ..dataserver.glb_usuario import gerar_payload as gerar_payload_glb_usuario
 from ..dataserver.lote import LoteInvalido, processar_lote
-from ..dataserver.planilha import url_copia_planilha_modelo
+from ..dataserver.planilha import links_planilha_modelo
 from ..dataserver.registro import MODULOS
 from ..registro_uso import registrar_uso
 from ..seguranca import CLIENTE_INTERNO, identificar_cliente
@@ -73,10 +73,15 @@ def _cliente_efetivo(autenticado: str, informado: str | None) -> str | None:
 def listar_modulos(cliente: str | None = None, autenticado: str = Depends(identificar_cliente)):
     """Módulos e seus campos -- a tela se monta a partir disso."""
     codigo = _cliente_efetivo(autenticado, cliente)
-    return [
-        {**m.para_dict(config_do_cliente(codigo, m.chave)), "planilha_modelo_url": url_copia_planilha_modelo(m.chave)}
-        for m in MODULOS.values()
-    ]
+    resposta = []
+    for m in MODULOS.values():
+        links = links_planilha_modelo(m.chave) or {}
+        resposta.append({
+            **m.para_dict(config_do_cliente(codigo, m.chave)),
+            "planilha_modelo_url": links.get("copiar"),  # "fazer uma cópia" (conta Google)
+            "planilha_modelo_xlsx_url": links.get("baixar_xlsx"),  # download em Excel
+        })
+    return resposta
 
 
 @router.get("/{chave}/modelo-csv")
