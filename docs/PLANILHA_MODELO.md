@@ -1,8 +1,20 @@
 # Planilha-modelo: Cadastro de Usuário (GlbUsuarioData)
 
-Especificação da planilha do Google Sheets que o cliente preenche. A ferramenta (aba **Em lote**)
-reconhece o cabeçalho pelos **rótulos da tela do RM**, então não é preciso traduzir nada: basta
-copiar as linhas da aba **Dados** e colar na ferramenta.
+O **modelo Excel (.xlsx) é gerado pelo próprio site** a partir dos campos do sistema, então nunca fica
+diferente do que o validador espera. Não depende de Google nem de link.
+
+- **Baixar o modelo** (analista): Gerador de DataServer > aba **Em lote** > *Baixar modelo Excel (.xlsx)*.
+  Com o campo **Cliente** preenchido, a aba "Listas" já vem com os códigos de acesso dele.
+- **Página para o cliente:** `/planilha-modelo` (o analista copia o endereço pelo botão
+  *Copiar link para o cliente*). Lá o cliente baixa o Excel ou o CSV; se houver uma planilha do Google
+  configurada (`PLANILHA_MODELO_GLB_USUARIO`), aparece também *Criar cópia no Google Sheets* (opcional).
+- **Validar:** na aba **Em lote**, *Enviar planilha preenchida (.xlsx ou CSV)* (ou colar as linhas).
+  Erros voltam por linha e, para `.xlsx`, também a **planilha marcada** (células em vermelho + comentário).
+- **Teste com dados fictícios:** `python scripts/gerar_planilha_teste.py` (ou use
+  `docs/exemplos/cadastro_usuarios_ficticio.xlsx`): 30 usuários, 27 válidos e 3 com erro (linhas 6, 12 e 20).
+
+Abaixo, a especificação do conteúdo do modelo (a mesma vale para uma planilha do Google, se preferir
+montar uma à mão). A ferramenta reconhece o cabeçalho pelos **rótulos da tela do RM**.
 
 ## Aba "Dados"
 Linha 1 = cabeçalho (congelada e protegida). Linhas 2 a 501 = dados (até 500 usuários).

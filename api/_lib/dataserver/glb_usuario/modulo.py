@@ -29,7 +29,7 @@ CAMPOS = (
     Campo("EMAIL", "E-Mail", tipo=EMAIL),
     Campo("CODACESSO", "Código de Acesso", obrigatorio=True,
           ajuda="Código do grupo/perfil de acesso já cadastrado no RM (ex.: Acesso01)."),
-    Campo("STATUS", "Ativo", tipo=BOOLEANO, padrao=True, ajuda="Marcado = STATUS 1."),
+    Campo("STATUS", "Ativo", tipo=BOOLEANO, padrao=True, ajuda="Sim = usuário ativo; Não = inativo."),
     Campo("OIDC_ENABLED", "Login OIDC", tipo=BOOLEANO, padrao=False, obrigatorio=True),
     Campo("OBRIGAALTERARSENHA", "Alterar senha no próximo login", tipo=BOOLEANO, padrao=True),
     Campo("DIASEXPSENHA", "Força a troca de senha a cada (dias)", tipo=INTEIRO,
@@ -146,6 +146,7 @@ MODULO = Modulo(
     entrega_lote=_entrega_lote,
     campo_chave="CODUSUARIO",
     versao_schema="1",
+    tabela_xml="GUSUARIO",
     listas_config={"codigos_acesso": "CODACESSO"},
     nao_validado=(
         "Tamanhos máximos dos campos não foram confirmados (só há um teto geral de 255 caracteres).",
@@ -153,5 +154,6 @@ MODULO = Modulo(
         "recebido só tinha esses campos vazios.",
         "A URL do REST, a porta e a autenticação são do seu ambiente (placeholders nas instruções).",
         "A alteração (PUT) usa o código do usuário na URL -- confirme no seu ambiente.",
+        "O XML (DataSet para SaveRecord) foi inferido do padrão do RM e não foi confirmado: valide em homologação.",
     ),
 )

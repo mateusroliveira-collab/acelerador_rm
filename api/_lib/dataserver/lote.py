@@ -15,6 +15,7 @@ import unicodedata
 from typing import Callable
 
 from .base import DATA, Modulo, normalizar_e_validar
+from .xml_saida import gerar_xml
 
 MAX_LINHAS = 500
 MAX_CARACTERES = 1_000_000
@@ -146,5 +147,9 @@ def processar_lote(
         saida["jsonl"] = "\n".join(json.dumps(p, ensure_ascii=False) for p in payloads) + "\n"
         saida["json"] = json.dumps(payloads, ensure_ascii=False, indent=2)
         saida["nome_arquivo"] = f"{nome_base}.jsonl"
+        xml = gerar_xml(modulo, payloads)
+        if xml:
+            saida["xml"] = xml
+            saida["nome_arquivo_xml"] = f"{nome_base}.xml"
         saida["instrucoes"] = modulo.entrega_lote(operacao, f"{nome_base}.jsonl", validos)
     return saida

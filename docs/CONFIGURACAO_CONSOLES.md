@@ -41,27 +41,18 @@ python scripts/cliente_config.py listar
 O script mostra o servidor de destino (sem usuário/senha) antes de gravar.
 Guarde **somente configuração** (códigos de acesso, versão do RM) — nunca dado pessoal.
 
-## 4. Planilha-modelo no Google Sheets (para o cliente preencher)
-**Não há script, nem projeto no Google Cloud, nem chave.** A planilha é um arquivo comum no seu Drive;
-o app só guarda o **link** dela.
+## 4. Planilha-modelo (para o cliente preencher)
+**O modelo Excel (.xlsx) é gerado pelo próprio site** e não exige configuração em console nenhum.
+O analista baixa em *Gerador de DataServer > Em lote > Baixar modelo Excel*, e o cliente pode baixar em
+`https://SEU-APP.vercel.app/planilha-modelo` (botão *Copiar link para o cliente* na tela do analista).
 
-- [ ] Crie a planilha no seu Google Drive e monte conforme `docs/PLANILHA_MODELO.md`
-      (abas Dados, Listas e Instruções; cabeçalhos, validações e proteção).
+**Opcional — planilha do Google Sheets** (para quem prefere trabalhar no Google):
+- [ ] Monte a planilha conforme `docs/PLANILHA_MODELO.md`.
 - [ ] **Compartilhar > Acesso geral > "Qualquer pessoa com o link" > Leitor.**
-      (É o que permite ao cliente abrir o link de cópia. A planilha-modelo não tem dados de ninguém.)
-- [ ] Copie o link da barra de endereços e cadastre na Vercel como `PLANILHA_MODELO_GLB_USUARIO`
-      (seção 2). Faça um **Redeploy**.
-- [ ] Abra o Gerador de DataServer: aparece o botão **Abrir planilha modelo**, que leva à tela
-      "Fazer uma cópia" do Google, e o botão **Copiar link para o cliente**.
-- [ ] O link para o cliente é a **página pública** `https://SEU-APP.vercel.app/planilha-modelo`: nela o
-      cliente escolhe **Criar minha cópia no Google Sheets** (cada clique gera uma planilha separada, na conta
-      dele), **Baixar em Excel** ou **Baixar em CSV**. A página não tem ferramenta de validação nem recebe dados.
-
-**Fluxo por cliente (recomendado):** abra o botão, faça a cópia, edite a aba **Listas** com os códigos
-de acesso do cliente e **compartilhe a cópia com o cliente como _Editor_**. Assim o cliente não é dono
-da planilha e **não consegue alterar o cabeçalho nem as abas protegidas**. Se você mandar direto o link de cópia, o
-cliente vira dono da cópia dele e pode mexer em tudo — funciona, mas a ferramenta é que garante a qualidade,
-porque valida tudo de novo ao receber os dados.
+- [ ] Cadastre o link na Vercel como `PLANILHA_MODELO_GLB_USUARIO` e faça um **Redeploy**. Aparece o botão
+      *Criar cópia no Google Sheets* na página do cliente e *Abrir planilha modelo* na tela do analista.
+- Quem copia vira dono da cópia dele e pode alterar tudo (inclusive o cabeçalho); a ferramenta valida
+  tudo de novo ao receber os dados.
 
 ## 5. GitHub
 - [ ] O `.gitignore` já ignora `.env`, `.env.local` e `*.db`. Confira com `git status` que nenhum

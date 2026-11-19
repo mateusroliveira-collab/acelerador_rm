@@ -66,6 +66,10 @@ type ResultadoLote = {
   jsonl?: string;
   json?: string;
   nome_arquivo?: string;
+  xml?: string;
+  nome_arquivo_xml?: string;
+  anotado_b64?: string;
+  nome_arquivo_anotado?: string;
   instrucoes?: string[];
 };
 
@@ -90,6 +94,7 @@ export default function GeradorDataServerPage() {
   // Modo lote (planilha)
   const [modo, setModo] = useState<"formulario" | "lote">("lote");
   const [textoLote, setTextoLote] = useState("");
+  const [arquivoXlsx, setArquivoXlsx] = useState<File | null>(null);
   const [nomeArquivoLote, setNomeArquivoLote] = useState<string | null>(null);
   const [lote, setLote] = useState<ResultadoLote | null>(null);
   const [processandoLote, setProcessandoLote] = useState(false);
@@ -178,7 +183,13 @@ export default function GeradorDataServerPage() {
     setErro(null);
     setLote(null);
     try {
-      setTextoLote(await arquivo.text());
+      if (arquivo.name.toLowerCase().endsWith(".xlsx")) {
+        setArquivoXlsx(arquivo);
+        setTextoLote("");
+      } else {
+        setArquivoXlsx(null);
+        setTextoLote(await arquivo.text());
+      }
       setNomeArquivoLote(arquivo.name);
     } catch {
       setErro("Não foi possível ler o arquivo.");
@@ -191,11 +202,23 @@ export default function GeradorDataServerPage() {
     setErro(null);
     setLote(null);
     try {
-      const resposta = await fetch(`/api/v1/dataserver/${modulo.chave}/lote`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ operacao, texto: textoLote, cliente: cliente.trim() || null }),
-      });
+      let resposta: Response;
+      if (arquivoXlsx) {
+        const form = new FormData();
+        form.append("arquivo", arquivoXlsx);
+        const q = new URLSearchParams({ operacao });
+        if (cliente.trim()) q.set("cliente", cliente.trim());
+        resposta = await fetch(`/api/v1/dataserver/${modulo.chave}/lote-xlsx?${q}`, {
+          method: "POST",
+          body: form,
+        });
+      } else {
+        resposta = await fetch(`/api/v1/dataserver/${modulo.chave}/lote`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ operacao, texto: textoLote, cliente: cliente.trim() || null }),
+        });
+      }
       const dados = await resposta.json().catch(() => null);
       if (!resposta.ok) {
         throw new Error(
@@ -208,6 +231,29 @@ export default function GeradorDataServerPage() {
     } finally {
       setProcessandoLote(false);
     }
+  }
+
+  async function baixarModeloXlsx() {
+    if (!modulo) return;
+    try {
+      const q = cliente.trim() ? `?cliente=${encodeURIComponent(cliente.trim())}` : "";
+      const resposta = await fetch(`/api/v1/dataserver/${modulo.chave}/modelo-xlsx${q}`);
+      if (!resposta.ok) throw new Error();
+      baixarBlob(await resposta.blob(), `${modulo.dataserver}_modelo.xlsx`);
+    } catch {
+      setErro("Não foi possível baixar o modelo Excel.");
+    }
+  }
+
+  function baixarPlanilhaMarcada() {
+    if (!lote?.anotado_b64) return;
+    const bin = atob(lote.anotado_b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    baixarBlob(
+      new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+      lote.nome_arquivo_anotado ?? "planilha_com_erros.xlsx"
+    );
   }
 
   async function baixarModelo() {
@@ -261,8 +307,16 @@ export default function GeradorDataServerPage() {
     baixarBlob(new Blob([csv], { type: "text/csv;charset=utf-8" }), "relatorio_de_erros.csv");
   }
 
-  function baixarLote(formato: "jsonl" | "json") {
+  function baixarLote(formato: "jsonl" | "json" | "xml") {
     if (!lote?.jsonl || !lote.json || !lote.nome_arquivo) return;
+    if (formato === "xml") {
+      if (!lote.xml) return;
+      baixarBlob(
+        new Blob([lote.xml], { type: "application/xml;charset=utf-8" }),
+        lote.nome_arquivo_xml ?? "lote.xml"
+      );
+      return;
+    }
     const conteudo = formato === "jsonl" ? lote.jsonl : lote.json;
     const nome = formato === "jsonl" ? lote.nome_arquivo : lote.nome_arquivo.replace(/\.jsonl$/, ".json");
     baixarBlob(new Blob([conteudo], { type: "application/json;charset=utf-8" }), nome);
@@ -449,23 +503,40 @@ export default function GeradorDataServerPage() {
                     </div>
                   </div>
                 ) : (
-                  <p className="mt-3 text-xs text-muted">
-                    O link da planilha modelo ainda não foi configurado (variável de ambiente
-                    PLANILHA_MODELO_GLB_USUARIO). Enquanto isso, baixe o modelo CSV abaixo.
-                  </p>
+                  null
                 )}
+                <div className="mt-3 rounded-md border border-line bg-paper p-3">
+                  <p className="text-xs text-muted">
+                    <strong>1.</strong> Baixe o modelo, entregue ao usuário e peça para ele preencher.{" "}
+                    <strong>2.</strong> Envie a planilha preenchida aqui (ou cole as linhas abaixo).{" "}
+                    <strong>3.</strong> Corrija o que for apontado e gere o arquivo de carga.
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={baixarModeloXlsx}
+                      className="rounded-md bg-action px-4 py-2 text-sm font-medium text-white transition hover:bg-action-hover"
+                    >
+                      Baixar modelo Excel (.xlsx)
+                    </button>
+                    <button
+                      onClick={baixarModelo}
+                      className="rounded-md border border-line px-3 py-2 text-xs text-ink transition hover:border-brand"
+                    >
+                      Modelo CSV
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs text-muted">
+                    Com o campo <em>Cliente</em> preenchido acima, o modelo já vem com os códigos de acesso
+                    dele. Sem cliente, a aba &quot;Listas&quot; vem com códigos de exemplo: troque antes de enviar
+                    (Revisão &gt; Desproteger planilha, sem senha).
+                  </p>
+                </div>
                 <div className="mt-3 flex flex-wrap items-center gap-3">
-                  <button
-                    onClick={baixarModelo}
-                    className="rounded-md border border-line px-3 py-1.5 text-xs text-ink transition hover:border-brand"
-                  >
-                    Baixar modelo CSV
-                  </button>
-                  <label className="cursor-pointer rounded-md border border-line px-3 py-1.5 text-xs text-ink transition hover:border-brand">
-                    {nomeArquivoLote ?? "Enviar arquivo CSV"}
+                  <label className="cursor-pointer rounded-md bg-action px-4 py-2 text-sm font-medium text-white transition hover:bg-action-hover">
+                    {nomeArquivoLote ?? "Enviar planilha preenchida (.xlsx ou CSV)"}
                     <input
                       type="file"
-                      accept=".csv,.txt,text/csv"
+                      accept=".xlsx,.csv,.txt,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                       className="hidden"
                       onChange={(e) => lerArquivoLote(e.target.files?.[0] ?? null)}
                     />
@@ -475,6 +546,7 @@ export default function GeradorDataServerPage() {
                   value={textoLote}
                   onChange={(e) => {
                     setTextoLote(e.target.value);
+                    setArquivoXlsx(null);
                     setNomeArquivoLote(null);
                     setLote(null);
                   }}
@@ -484,7 +556,7 @@ export default function GeradorDataServerPage() {
                 />
                 <button
                   onClick={validarLote}
-                  disabled={!textoLote.trim() || processandoLote}
+                  disabled={(!textoLote.trim() && !arquivoXlsx) || processandoLote}
                   className="mt-3 rounded-md bg-action px-5 py-2.5 text-sm font-medium text-white transition hover:bg-action-hover disabled:opacity-50"
                 >
                   {processandoLote ? "Validando..." : "Validar lote"}
@@ -510,6 +582,14 @@ export default function GeradorDataServerPage() {
 
                     {lote.invalidos > 0 && (
                       <div className="mt-3 flex flex-wrap gap-2">
+                        {lote.anotado_b64 && (
+                          <button
+                            onClick={baixarPlanilhaMarcada}
+                            className="rounded-md bg-action px-3 py-1.5 text-xs font-medium text-white transition hover:bg-action-hover"
+                          >
+                            Baixar planilha marcada com os erros (.xlsx)
+                          </button>
+                        )}
                         <button
                           onClick={copiarRelatorio}
                           className="rounded-md border border-line px-3 py-1.5 text-xs text-ink transition hover:border-brand"
@@ -568,6 +648,15 @@ export default function GeradorDataServerPage() {
                           >
                             Baixar JSON (lista)
                           </button>
+                          {lote.xml && (
+                            <button
+                              onClick={() => baixarLote("xml")}
+                              title="Formato inferido do padrão do RM: valide em homologação"
+                              className="rounded-md border border-line px-4 py-2 text-sm text-ink transition hover:border-brand"
+                            >
+                              Baixar XML (formato a validar)
+                            </button>
+                          )}
                         </div>
                         <h3 className="mt-5 font-display text-sm font-bold text-ink">Como enviar</h3>
                         <ol className="mt-2 list-decimal space-y-2 pl-5 text-xs text-muted">

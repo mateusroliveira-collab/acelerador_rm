@@ -74,6 +74,12 @@ checar("GET /api/v1/dataserver/modulos", r.status_code == 200 and r.json()[0]["v
 r = client.get("/api/v1/dataserver/modulos")
 checar("modulos traz planilha_modelo_url", r.status_code == 200 and "planilha_modelo_url" in r.json()[0])
 
+r = client.get("/api/v1/dataserver/glb-usuario/modelo-xlsx")
+checar("GET modelo-xlsx", r.status_code == 200 and r.content[:2] == b"PK")
+
+r = client.post("/api/v1/dataserver/glb-usuario/lote-xlsx", files={"arquivo": ("modelo.xlsx", r.content)})
+checar("POST lote-xlsx (modelo vazio recusado)", r.status_code == 400)
+
 r = client.get("/api/dataserver/glb-usuario/modelo-csv")
 checar("GET /api/dataserver/glb-usuario/modelo-csv", r.status_code == 200 and b"CODUSUARIO" in r.content)
 

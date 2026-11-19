@@ -65,6 +65,8 @@ class Modulo:
     # Versão do schema do módulo: sobe quando campos/regras mudam. Vai nas
     # respostas e no log, pra rastrear com qual versão cada arquivo foi gerado.
     versao_schema: str = "1"
+    # Nome da tabela no DataSet XML do RM (ex.: GUSUARIO); None = sem saída XML.
+    tabela_xml: str | None = None
     # chave da config do cliente -> campo validado contra essa lista
     # (ex.: {"codigos_acesso": "CODACESSO"})
     listas_config: dict = field(default_factory=dict)

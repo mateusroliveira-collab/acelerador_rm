@@ -10,9 +10,10 @@ Montado em dois prefixos (ver api/index.py):
   /api/dataserver/...     -> alias de compatibilidade (fora da documentação)
 """
 
+import base64
 import json
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Response, UploadFile
 from pydantic import BaseModel
 
 from ..clientes import config_do_cliente
@@ -20,6 +21,7 @@ from ..dataserver.base import normalizar_e_validar
 from ..dataserver.glb_usuario import gerar_payload as gerar_payload_glb_usuario
 from ..dataserver.lote import LoteInvalido, processar_lote
 from ..dataserver.planilha import links_planilha_modelo
+from ..dataserver import xlsx as planilha_xlsx
 from ..dataserver.registro import MODULOS
 from ..registro_uso import registrar_uso
 from ..seguranca import CLIENTE_INTERNO, identificar_cliente
@@ -82,6 +84,50 @@ def listar_modulos(cliente: str | None = None, autenticado: str = Depends(identi
             "planilha_modelo_xlsx_url": links.get("baixar_xlsx"),  # download em Excel
         })
     return resposta
+
+
+@router.get("/{chave}/modelo-xlsx")
+def modelo_xlsx(chave: str, cliente: str | None = None, autenticado: str = Depends(identificar_cliente)):
+    """Modelo Excel (.xlsx) para o analista entregar ao cliente. Com `cliente`, já vem com os códigos de acesso dele."""
+    modulo = _modulo(chave)
+    cfg = config_do_cliente(_cliente_efetivo(autenticado, cliente), chave)
+    conteudo = planilha_xlsx.gerar_modelo_xlsx(modulo, cfg)
+    return Response(
+        content=conteudo,
+        media_type=planilha_xlsx.TIPO_MIME,
+        headers={"Content-Disposition": f'attachment; filename="{modulo.dataserver}_modelo.xlsx"'},
+    )
+
+
+@router.post("/{chave}/lote-xlsx")
+async def gerar_lote_xlsx(
+    chave: str, tarefas: BackgroundTasks, arquivo: UploadFile = File(...),
+    operacao: str = "incluir", cliente: str | None = None,
+    autenticado: str = Depends(identificar_cliente),
+):
+    """Valida a planilha .xlsx preenchida. Se houver erros, devolve também a planilha marcada (base64)."""
+    modulo = _modulo(chave)
+    if operacao not in modulo.operacoes:
+        raise HTTPException(status_code=422, detail=f"Operação inválida: {operacao!r}.")
+    codigo = _cliente_efetivo(autenticado, cliente)
+    conteudo = await arquivo.read(planilha_xlsx.MAX_BYTES + 1)
+    try:
+        resultado, _ = planilha_xlsx.processar_planilha(
+            modulo, conteudo, operacao, _GERADORES[chave], config_do_cliente(codigo, chave)
+        )
+        if resultado["invalidos"] > 0:
+            marcada = planilha_xlsx.anotar_planilha(conteudo, modulo, resultado)
+            resultado["anotado_b64"] = base64.b64encode(marcada).decode("ascii")
+            resultado["nome_arquivo_anotado"] = f"{modulo.dataserver}_com_erros.xlsx"
+    except (planilha_xlsx.XlsxInvalido, LoteInvalido) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    tarefas.add_task(
+        registrar_uso, "dataserver", "gerar-lote-xlsx",
+        {"modulo": chave, "operacao": operacao, "cliente": codigo or autenticado,
+         "versao_schema": modulo.versao_schema, "total": resultado["total"],
+         "validos": resultado["validos"], "invalidos": resultado["invalidos"]},
+    )
+    return resultado
 
 
 @router.get("/{chave}/modelo-csv")
