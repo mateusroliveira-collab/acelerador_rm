@@ -30,6 +30,13 @@ const ferramentas = [
     descricao: "Gera e valida o payload do DataServer (ex.: cadastro de usuário).",
     disponivel: true,
   },
+  {
+    href: "/analise-mit41",
+    codigo: "05",
+    titulo: "Análise da MIT 41",
+    descricao: "Cruza a MIT com a biblioteca de XMLs e monta a ficha dos movimentos que faltam.",
+    disponivel: true,
+  },
 ];
 
 export default function HomePage() {

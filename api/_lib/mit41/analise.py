@@ -43,7 +43,7 @@ PESOS = {
     "emite_nfe": 2, "emite_nfse": 2, "orcamento": 1, "contabiliza": 1,
     "aprovacao": 1, "gera_contrato": 1,
 }
-PESO_NOME = 6  # multiplicado pela semelhança de nome (0 a 1)
+PESO_NOME = 8  # multiplicado pela semelhança de nome (0 a 1)
 BONUS_GRUPO = 3
 NOME_FORTE = 0.5  # metade ou mais das palavras do título da MIT no nome do XML
 MAX_DIVERGENCIAS_AJUSTAR = 2

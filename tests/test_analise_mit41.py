@@ -80,6 +80,23 @@ def test_criar_quando_diverge_muito():
     assert r["ficha"]["codigo_sugerido"] == "2.2.01"
 
 
+def test_nome_identico_vence_um_parametro_coincidente():
+    # Caso visto na biblioteca real: a Solicitação que pede aprovação não pode
+    # cair na Ordem de Compra só porque a ordem tem aprovação ligada.
+    solicitacao = Candidato("1.1", "1.1.04-Solicitação de Compra.xml", RegraXml(
+        codigo="1.1.04", nome="Solicitação de Compra", estoque="nenhum", aprovacao=False))
+    ordem = Candidato("1.1", "1.1.03-Ordem de Compra.xml", RegraXml(
+        codigo="1.1.03", nome="Ordem de Compra", estoque="nenhum", aprovacao=True))
+    r = analisar_movimento(_mov(
+        "Solicitação de Compras",
+        "A solicitação de compras passa por aprovação do gestor. Movimento não gera integração fiscal. "
+        "Não movimenta estoque.",
+    ), [ordem, solicitacao], {})
+    assert r["ficha"]["xml_base"]["arquivo"] == solicitacao.arquivo
+    assert r["status"] == "ajustar"
+    assert [a["dimensao"] for a in r["ficha"]["ajustes"]] == ["aprovacao"]
+
+
 def test_sem_evidencia_nao_vira_pronto():
     r = analisar_movimento(_mov("Lançamento Diverso", "Movimento não gera integração fiscal."), [AJUSTE_4_1], {})
     assert r["status"] != "pronto"
