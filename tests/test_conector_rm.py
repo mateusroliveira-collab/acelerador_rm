@@ -124,7 +124,7 @@ def test_get_repassa_autenticacao_e_parametros(ambiente):
     assert status == 200 and r["ok"] and r["status"] == 200
     assert r["corpo"]["data"][0]["CODUSUARIO"] == "ana"
     rec = _RmFalso.recebidos[-1]
-    assert rec["metodo"] == "GET" and "filter=CODUSUARIO" in rec["caminho"]
+    assert rec["metodo"] == "GET" and "filter=CODUSUARIO%20%3D%20%27ana%27" in rec["caminho"]
     assert base64.b64decode(rec["auth"].split()[1]).decode() == f"mestre:{SENHA}"
 
 

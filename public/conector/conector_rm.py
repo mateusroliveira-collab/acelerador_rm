@@ -103,7 +103,8 @@ def montar_url(cfg: Config, caminho: str, parametros: dict | None = None) -> str
         if valor not in (None, ""):
             query.append((str(chave), str(valor)))
     url = cfg.rm + urllib.parse.quote(partes.path, safe="/;:@=,$-_.!~*'()%")
-    return url + ("?" + urllib.parse.urlencode(query) if query else "")
+    # Espaço vira %20 (não "+"): mais seguro com o filtro do REST do RM.
+    return url + ("?" + urllib.parse.urlencode(query, quote_via=urllib.parse.quote) if query else "")
 
 
 # --- Chamada ao RM ------------------------------------------------------------

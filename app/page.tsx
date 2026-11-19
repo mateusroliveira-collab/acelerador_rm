@@ -37,6 +37,13 @@ const ferramentas = [
     descricao: "Cruza a MIT com a biblioteca de XMLs e monta a ficha dos movimentos que faltam.",
     disponivel: true,
   },
+  {
+    href: "/conector-rm",
+    codigo: "06",
+    titulo: "Conector RM",
+    descricao: "Consulta, inclui, altera e exclui no RM pelo REST, a partir da sua máquina.",
+    disponivel: true,
+  },
 ];
 
 export default function HomePage() {
