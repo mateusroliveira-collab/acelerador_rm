@@ -12,6 +12,7 @@ type Campo = {
   padrao: string | number | boolean | null;
   ajuda: string;
   aba: string;
+  opcoes?: string[] | null;
 };
 type Modulo = {
   chave: string;
@@ -73,6 +74,9 @@ const OPERACAO_ROTULO: Record<string, string> = {
 
 export default function GeradorDataServerPage() {
   const [modulos, setModulos] = useState<Modulo[]>([]);
+  // Código do cliente (opcional): aplica a configuração dele (ex.: lista de códigos de acesso).
+  const [cliente, setCliente] = useState("");
+  const [scriptCopiado, setScriptCopiado] = useState<string | null>(null);
   const [chave, setChave] = useState<string | null>(null);
   const [operacao, setOperacao] = useState("incluir");
   const [valores, setValores] = useState<Valores>({});
@@ -91,8 +95,9 @@ export default function GeradorDataServerPage() {
 
   const modulo = modulos.find((m) => m.chave === chave) ?? null;
 
-  useEffect(() => {
-    fetch("/api/dataserver/modulos")
+  function carregarModulos(codigoCliente: string, manterSelecao: boolean) {
+    const q = codigoCliente.trim() ? `?cliente=${encodeURIComponent(codigoCliente.trim())}` : "";
+    fetch(`/api/v1/dataserver/modulos${q}`)
       .then((r) => {
         if (!r.ok) throw new Error();
         return r.json();
@@ -100,13 +105,35 @@ export default function GeradorDataServerPage() {
       .then((dados: Modulo[]) => {
         if (!Array.isArray(dados)) throw new Error();
         setModulos(dados);
-        if (dados.length > 0) {
+        if (!manterSelecao && dados.length > 0) {
           setChave(dados[0].chave);
           setValores(valoresIniciais(dados[0]));
         }
       })
       .catch(() => setErro("Não foi possível carregar os módulos do gerador."));
+  }
+
+  useEffect(() => {
+    carregarModulos("", false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function copiarArquivoSheets(qual: "script" | "manifesto") {
+    setErro(null);
+    try {
+      const url =
+        qual === "script"
+          ? `/api/v1/dataserver/google-sheets/script?base=${encodeURIComponent(window.location.origin)}`
+          : "/api/v1/dataserver/google-sheets/manifesto";
+      const resposta = await fetch(url);
+      if (!resposta.ok) throw new Error();
+      await navigator.clipboard.writeText(await resposta.text());
+      setScriptCopiado(qual);
+      setTimeout(() => setScriptCopiado(null), 2000);
+    } catch {
+      setErro("Não foi possível copiar o arquivo do Google Sheets.");
+    }
+  }
 
   function trocarModulo(nova: string) {
     const m = modulos.find((x) => x.chave === nova);
@@ -136,10 +163,10 @@ export default function GeradorDataServerPage() {
     setErrosCampo({});
     setResultado(null);
     try {
-      const resposta = await fetch(`/api/dataserver/${modulo.chave}/gerar`, {
+      const resposta = await fetch(`/api/v1/dataserver/${modulo.chave}/gerar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ operacao, valores }),
+        body: JSON.stringify({ operacao, valores, cliente: cliente.trim() || null }),
       });
       const dados = await resposta.json().catch(() => null);
       if (resposta.status === 422 && dados?.detail?.erros) {
@@ -178,10 +205,10 @@ export default function GeradorDataServerPage() {
     setErro(null);
     setLote(null);
     try {
-      const resposta = await fetch(`/api/dataserver/${modulo.chave}/lote`, {
+      const resposta = await fetch(`/api/v1/dataserver/${modulo.chave}/lote`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ operacao, texto: textoLote }),
+        body: JSON.stringify({ operacao, texto: textoLote, cliente: cliente.trim() || null }),
       });
       const dados = await resposta.json().catch(() => null);
       if (!resposta.ok) {
@@ -200,7 +227,7 @@ export default function GeradorDataServerPage() {
   async function baixarModelo() {
     if (!modulo) return;
     try {
-      const resposta = await fetch(`/api/dataserver/${modulo.chave}/modelo-csv`);
+      const resposta = await fetch(`/api/v1/dataserver/${modulo.chave}/modelo-csv`);
       if (!resposta.ok) throw new Error();
       baixarBlob(await resposta.blob(), `${modulo.dataserver}_modelo.csv`);
     } catch {
@@ -294,7 +321,31 @@ export default function GeradorDataServerPage() {
               </details>
             )}
 
-            <div className="mt-6 flex flex-wrap gap-4 text-sm">
+            <div className="mt-6 flex flex-wrap items-end gap-3 text-sm">
+              <div>
+                <label htmlFor="cliente" className="block text-xs text-muted">
+                  Cliente (opcional)
+                </label>
+                <input
+                  id="cliente"
+                  type="text"
+                  value={cliente}
+                  onChange={(e) => {
+                    setCliente(e.target.value);
+                    setResultado(null);
+                  }}
+                  onBlur={() => carregarModulos(cliente, true)}
+                  placeholder="código do cliente"
+                  className="mt-1 w-48 rounded-lg border border-line bg-paper px-3 py-1.5 text-sm text-ink placeholder:text-muted focus:border-brand"
+                />
+              </div>
+              <p className="max-w-md text-xs text-muted">
+                Se o cliente tiver configuração cadastrada, o Código de Acesso vira uma lista com os
+                valores dele e o que estiver fora da lista é recusado.
+              </p>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-4 text-sm">
               {modulo.operacoes.map((op) => (
                 <label key={op} className="flex cursor-pointer items-center gap-2 text-ink">
                   <input
@@ -493,6 +544,23 @@ export default function GeradorDataServerPage() {
                               >
                                 {c.rotulo}
                               </label>
+                              {c.opcoes && c.opcoes.length > 0 ? (
+                                <select
+                                  id={id}
+                                  value={String(valores[c.nome] ?? "")}
+                                  onChange={(e) => alterar(c.nome, e.target.value)}
+                                  className={`mt-1 w-full rounded-lg border bg-paper px-3 py-2 text-sm text-ink focus:border-brand ${
+                                    msg ? "border-red-400" : "border-line"
+                                  }`}
+                                >
+                                  <option value="">Selecione...</option>
+                                  {c.opcoes.map((o) => (
+                                    <option key={o} value={o}>
+                                      {o}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
                               <input
                                 id={id}
                                 type={
@@ -511,6 +579,7 @@ export default function GeradorDataServerPage() {
                                   msg ? "border-red-400" : "border-line"
                                 }`}
                               />
+                              )}
                             </>
                           )}
                           {c.ajuda && !msg && (
@@ -540,6 +609,42 @@ export default function GeradorDataServerPage() {
             </>)}
           </>
         )}
+
+        <details className="mt-10 rounded-lg border border-line bg-surface px-4 py-3 text-sm">
+          <summary className="cursor-pointer font-display font-bold text-ink">
+            Modelo para Google Sheets (o cliente preenche, você valida aqui)
+          </summary>
+          <p className="mt-3 text-xs text-muted">
+            Uma planilha-modelo no Google Sheets, com cabeçalho travado e listas/datas validadas, que
+            valida os dados nesta API e pinta as células com erro. O cliente só preenche; você corrige e
+            gera o arquivo para o RM. Nada é enviado ao RM.
+          </p>
+          <ol className="mt-3 list-decimal space-y-1 pl-5 text-xs text-muted">
+            <li>Crie uma planilha no seu Google Drive e abra <strong>Extensões &gt; Apps Script</strong>.</li>
+            <li>Nas configurações do projeto, marque <em>Mostrar arquivo de manifesto appsscript.json</em>.</li>
+            <li>Cole o <strong>manifesto</strong> em <code>appsscript.json</code> e o <strong>script</strong> em <code>Codigo.gs</code> (botões abaixo).</li>
+            <li>Salve, recarregue a planilha e use o menu <strong>Acelerador RM</strong>: Configurar, Montar modelo.</li>
+            <li>Para cada cliente: <strong>Arquivo &gt; Fazer uma cópia</strong> e compartilhe a cópia.</li>
+          </ol>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              onClick={() => copiarArquivoSheets("script")}
+              className="rounded-md bg-action px-4 py-2 text-xs font-medium text-white transition hover:bg-action-hover"
+            >
+              {scriptCopiado === "script" ? "Script copiado!" : "Copiar script (Codigo.gs)"}
+            </button>
+            <button
+              onClick={() => copiarArquivoSheets("manifesto")}
+              className="rounded-md border border-line px-4 py-2 text-xs text-ink transition hover:border-brand"
+            >
+              {scriptCopiado === "manifesto" ? "Manifesto copiado!" : "Copiar manifesto (appsscript.json)"}
+            </button>
+          </div>
+          <p className="mt-3 text-xs text-muted">
+            O script vem já apontando para este endereço ({typeof window !== "undefined" ? window.location.origin : ""}).
+            Detalhes, permissões e roteiro de teste: <code>google-sheets/README.md</code> e <code>docs/CONFIGURACAO_CONSOLES.md</code> no repositório.
+          </p>
+        </details>
 
         {modo === "formulario" && resultado && (
           <div className="mt-8 rounded-lg border border-line bg-surface p-4">
