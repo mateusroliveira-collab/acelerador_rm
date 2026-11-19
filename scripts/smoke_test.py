@@ -49,6 +49,10 @@ checar("GET /api/xml/pesquisar (sem acento)", r.status_code == 200 and r.json()[
 r = client.get("/api/xml/pesquisar", params={"q": ""})
 checar("GET /api/xml/pesquisar (vazio)", r.status_code == 200 and r.json()["total"] == 0)
 
+_primeiro = client.get("/api/xml/buscar", params={"grupo": "1.2"}).json()["arquivos"][0]["nome"]
+r = client.get("/api/xml/regra", params={"grupo": "1.2", "arquivo": _primeiro})
+checar("GET /api/xml/regra (índice de regras)", r.status_code == 200 and len(r.json()["regra"]["resumo"]) > 0)
+
 texto_mit41 = "[INICIO_MOVIMENTO]\nNOME_MOVIMENTO=Baixa de Estoque\n[FIM_MOVIMENTO]"
 r = client.post("/api/xml/sugerir-grupo", json={"texto": texto_mit41})
 checar("POST /api/xml/sugerir-grupo", r.status_code == 200 and r.json()["movimentos"][0]["sugestoes"][0]["grupo"] == "4.1")

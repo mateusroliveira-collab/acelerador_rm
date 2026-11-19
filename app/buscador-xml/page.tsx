@@ -29,6 +29,9 @@ export default function BuscadorXmlPage() {
   const [carregando, setCarregando] = useState(false);
   const [baixando, setBaixando] = useState<string | null>(null);
   const [excluindo, setExcluindo] = useState<number | null>(null);
+  // Regra de negócio por item (chave do item -> frases; null = não foi possível ler).
+  const [regraAberta, setRegraAberta] = useState<string | null>(null);
+  const [regras, setRegras] = useState<Record<string, string[] | null>>({});
   const [erro, setErro] = useState<string | null>(null);
 
   const [arquivoParaEnviar, setArquivoParaEnviar] = useState<File | null>(
@@ -168,6 +171,27 @@ export default function BuscadorXmlPage() {
       setErro(`Não foi possível higienizar "${item.nome}".`);
     } finally {
       setBaixando(null);
+    }
+  }
+
+  async function alternarRegra(item: ArquivoResultado) {
+    const chave = chaveItem(item);
+    if (regraAberta === chave) {
+      setRegraAberta(null);
+      return;
+    }
+    setRegraAberta(chave);
+    if (regras[chave] !== undefined || !grupoSelecionado) return;
+    try {
+      const params = item.personalizado
+        ? new URLSearchParams({ id: String(item.id) })
+        : new URLSearchParams({ grupo: grupoSelecionado, arquivo: item.nome });
+      const resposta = await fetch(`/api/xml/regra?${params}`);
+      if (!resposta.ok) throw new Error();
+      const dados = await resposta.json();
+      setRegras((r) => ({ ...r, [chave]: dados.regra?.resumo ?? [] }));
+    } catch {
+      setRegras((r) => ({ ...r, [chave]: null }));
     }
   }
 
@@ -607,10 +631,8 @@ Ele some das buscas de todo mundo. (A exclusão é registrada e pode ser desfeit
           )}
 
           {arquivos.map((item) => (
-            <div
-              key={chaveItem(item)}
-              className="flex items-center justify-between gap-4 px-4 py-3"
-            >
+            <div key={chaveItem(item)} className="px-4 py-3">
+            <div className="flex items-center justify-between gap-4">
               <span className="flex items-center gap-2">
                 <span className="font-mono text-sm text-ink">
                   {item.nome}
@@ -638,7 +660,33 @@ Ele some das buscas de todo mundo. (A exclusão é registrada e pode ser desfeit
                 >
                   {baixando === chaveItem(item) ? "Gerando..." : "Limpar e baixar"}
                 </button>
+                <button
+                  onClick={() => alternarRegra(item)}
+                  aria-expanded={regraAberta === chaveItem(item)}
+                  className="rounded-md border border-line px-3 py-2 text-sm text-ink transition hover:border-brand"
+                >
+                  {regraAberta === chaveItem(item) ? "Ocultar regra" : "Regra de negócio"}
+                </button>
               </span>
+            </div>
+            {regraAberta === chaveItem(item) && (
+              <div className="mt-2 rounded-md border border-line bg-paper px-3 py-2 text-sm">
+                {regras[chaveItem(item)] === undefined ? (
+                  <p className="text-muted">Lendo o XML...</p>
+                ) : regras[chaveItem(item)] === null ? (
+                  <p className="text-muted">
+                    Não foi possível ler a regra deste XML (não parece um XML de parâmetros de
+                    tipo de movimento).
+                  </p>
+                ) : (
+                  <ul className="list-disc space-y-0.5 pl-5 text-ink">
+                    {regras[chaveItem(item)]!.map((frase) => (
+                      <li key={frase}>{frase}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
             </div>
           ))}
         </div>

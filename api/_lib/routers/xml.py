@@ -26,6 +26,7 @@ from ..mit41.pre_processador import (
     extrair_indice_de_tabelas,
 )
 from ..pesquisa_xml import ItemXml, LIMITE_RESULTADOS, pesquisar
+from ..regras_xml import regra_da_biblioteca, regra_de_conteudo
 from ..registro_uso import registrar_uso
 from ..db import SessionLocal
 from ..models import XmlPersonalizado
@@ -277,6 +278,39 @@ def baixar_xml_personalizado(xml_id: int):
         _nome_limpo(registro.nome_arquivo),
         registro.campos_zerados or 0,
     )
+
+
+@router.get("/regra")
+def regra_de_negocio(grupo: str | None = None, arquivo: str | None = None, id: int | None = None):
+    """
+    Regra de negócio de um XML (o que o movimento faz no estoque, financeiro,
+    fiscal, orçamento...): da biblioteca fixa (grupo + arquivo) ou de um XML
+    personalizado (id). Só leitura.
+    """
+    if id is not None:
+        db = SessionLocal()
+        try:
+            registro = (
+                db.query(XmlPersonalizado)
+                .filter(XmlPersonalizado.id == id, XmlPersonalizado.excluido.isnot(True))
+                .first()
+            )
+        finally:
+            db.close()
+        if not registro:
+            raise HTTPException(status_code=404, detail="XML personalizado não encontrado.")
+        try:
+            regra = regra_de_conteudo((registro.conteudo_original or registro.conteudo_limpo or "").encode("utf-8"))
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        return {"grupo": registro.grupo, "arquivo": registro.nome_arquivo, "regra": regra.para_dict()}
+
+    if not grupo or not arquivo:
+        raise HTTPException(status_code=400, detail="Informe grupo e arquivo, ou o id do XML personalizado.")
+    regra = regra_da_biblioteca(grupo, arquivo)
+    if regra is None:
+        raise HTTPException(status_code=404, detail="XML não encontrado ou não é de parâmetros de movimento.")
+    return {"grupo": grupo, "arquivo": arquivo, "regra": regra.para_dict()}
 
 
 @router.delete("/personalizado/{xml_id}")
