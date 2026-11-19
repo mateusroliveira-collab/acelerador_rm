@@ -72,13 +72,22 @@ Exemplo de linha (fica **só nesta aba**, nunca na aba Dados):
 `maria.silva | Maria Silva | | maria.silva@empresa.com | Acesso01 | Sim | Não | Sim | | 01/12/2026 | | | | Não`
 
 ## Como usar
-1. Botão **Abrir planilha modelo** (Gerador de DataServer) → *Fazer uma cópia*.
-2. Preencha a aba **Listas** com os códigos de acesso do cliente.
-3. Compartilhe a cópia com o cliente como **Editor** (assim o cabeçalho e as abas protegidas ficam travados para ele).
-4. Quando o cliente terminar: abra a cópia, aba **Dados**, `Ctrl+A`, `Ctrl+C`; na ferramenta, aba
-   **Em lote**, cole e clique **Validar lote**.
-5. Erros: **Copiar relatório de erros** (ou baixar o CSV), devolva ao cliente, repita.
-6. Tudo válido: baixe o JSONL e siga as instruções de envio ao RM exibidas na tela.
+### Com o modelo Excel (recomendado)
+1. Gerador de DataServer > **Em lote**: preencha **Cliente** (para vir com os códigos de acesso dele)
+   e clique **Baixar modelo Excel (.xlsx)**. Sem cliente cadastrado, troque os códigos de exemplo da
+   aba **Listas** antes de enviar (Revisão > Desproteger planilha, sem senha).
+2. Envie o arquivo ao cliente (ou o link `/planilha-modelo`, botão *Copiar link para o cliente*).
+3. Quando o cliente devolver: **Enviar planilha preenchida** e **Validar lote**.
+4. Erros: **Baixar planilha marcada** (células em vermelho com comentário + aba "Erros"), devolva ao
+   cliente, repita.
+5. Tudo válido: **Enviar direto ao RM** pelo conector (comece pelo teste de um registro) ou baixe o
+   JSONL e use o script exibido na tela.
+
+### Com uma planilha do Google Sheets (opcional)
+1. Botão **Abrir planilha modelo** (aparece se `PLANILHA_MODELO_GLB_USUARIO` estiver configurada) →
+   *Fazer uma cópia*, preencha a aba **Listas** e compartilhe a cópia com o cliente como **Editor**.
+2. Quando o cliente terminar: aba **Dados**, `Ctrl+A`, `Ctrl+C`; na ferramenta, aba **Em lote**,
+   cole e clique **Validar lote**. Daí em diante, igual aos passos 4 e 5 acima.
 
 ## Limites
 - A proteção e a validação do Google **não são segurança** (o cliente pode colar valores por cima, e o

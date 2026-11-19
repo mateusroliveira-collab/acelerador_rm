@@ -15,7 +15,7 @@ Em **Project > Settings > Environment Variables** (ambiente *Production*; repita
 | Variável | Obrigatória | Valor |
 |---|---|---|
 | `DATABASE_URL` | **Sim** | URL *pooled* do Neon (passo 1) |
-| `PLANILHA_MODELO_GLB_USUARIO` | Não | Link da planilha-modelo no Google Sheets (seção 4). Sem ele, a tela mostra só o modelo CSV |
+| `PLANILHA_MODELO_GLB_USUARIO` | Não | Link da planilha-modelo no Google Sheets (seção 4). Sem ele, só não aparece a opção do Google: o modelo Excel funciona sempre |
 | `API_KEYS` | Não | `chave1:clienteA,chave2:clienteB` (chaves longas e aleatórias) |
 | `API_EXIGIR_CHAVE` | Não | `1` para recusar chamadas sem chave (ver aviso abaixo) |
 | `RATE_LIMIT_POR_MINUTO` | Não | ex.: `120` (limite aproximado por instância) |
@@ -54,6 +54,12 @@ O analista baixa em *Gerador de DataServer > Em lote > Baixar modelo Excel*, e o
 - Quem copia vira dono da cópia dele e pode alterar tudo (inclusive o cabeçalho); a ferramenta valida
   tudo de novo ao receber os dados.
 
-## 5. GitHub
+## 5. Conector RM (nenhuma configuração de console)
+O conector roda na máquina de cada analista e é baixado pela própria tela (`/conector-rm`), que
+monta o comando com o endereço do RM e a origem do site. Não há variável de ambiente, chave nem
+segredo no servidor: o site não se conecta ao RM. Requisito na máquina do analista: Python 3.9+ e
+acesso de rede ao RM (VPN do cliente, se for o caso). Ver [GUIA_DO_ANALISTA.md](GUIA_DO_ANALISTA.md#6-conector-rm).
+
+## 6. GitHub
 - [ ] O `.gitignore` já ignora `.env`, `.env.local` e `*.db`. Confira com `git status` que nenhum
       segredo aparece antes de cada commit.

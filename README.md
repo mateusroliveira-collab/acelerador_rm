@@ -1,216 +1,116 @@
-# Ferramentas RM — Acelerador de Implantação TOTVS RM
+# Acelerador RM — Ferramentas de implantação TOTVS RM
 
-Conjunto de ferramentas internas para analistas do TOTVS RM (Backoffice —
-Compras, Estoque, Faturamento, Financeiro), pensadas pra acelerar tarefas
-manuais, repetitivas e propensas a erro humano durante implantação e
-parametrização de clientes.
+Conjunto de ferramentas internas para analistas de implantação do TOTVS RM (Backoffice: Compras,
+Estoque, Faturamento, Financeiro). Elas aceleram tarefas manuais, repetitivas e sujeitas a erro
+humano: ler a MIT 41, achar e limpar XMLs de parametrização, validar arquivos de banco e carregar
+cadastros no RM.
 
 **No ar em:** `https://acelerador-rm.vercel.app`
 
 ---
 
-## Por que esse projeto existe
+## Princípios (valem para tudo no projeto)
 
-Analistas de implantação do RM gastam uma parte relevante do tempo em
-tarefas que são, no fundo, mecânicas — mas que hoje são feitas na mão:
-
-- Procurar um XML de referência parecido com o que o cliente precisa, e
-  depois limpar à mão todo campo que "amarra" aquele XML no ambiente
-  original (coligada, filial, fórmula, série de numeração...).
-- Ler um arquivo CNAB de banco linha por linha pra achar o campo que
-  está causando rejeição.
-- Ler um documento de levantamento (MIT 41) de dezenas de páginas pra
-  extrair a lista de processos e decidir onde cada um se encaixa no RM.
-
-Nenhuma dessas tarefas precisa de inteligência artificial pra ser bem
-feita — precisa de **regra determinística, testada contra caso real, e
-honesta sobre o que não sabe resolver sozinha**. É essa a filosofia do
-projeto: sempre que possível, regra pura (regex, posição de campo,
-algoritmo público) em vez de IA. Quando algo genuinamente exige
-interpretação de linguagem, isso fica marcado explicitamente como
-"precisa de IA" — a ferramenta nunca finge ter resolvido uma parte que
-não resolveu.
+1. **Sem IA em produção.** Toda lógica é regra determinística, testável e explicável: cada
+   conclusão mostra o porquê (o trecho da MIT, o parâmetro do XML, a linha e a posição do CNAB).
+   Onde a regra não tem certeza, a ferramenta diz isso em vez de chutar.
+2. **Sem chaves nem tokens de terceiros.** O site não depende de serviço pago nem de API externa.
+3. **O site não se conecta ao RM do cliente e não guarda credenciais.** As chamadas ao RM saem da
+   máquina do analista, pelo **conector local**; a senha é digitada na hora e nunca é gravada.
+4. **Tudo é validado de novo no servidor.** Planilha protegida, lista suspensa ou validação na
+   tela ajudam, mas não são garantia.
 
 ---
 
-## As quatro ferramentas
+## As ferramentas
 
-### 1. Buscador de XML (`/buscador-xml`)
+| # | Tela | Para quê | Guia |
+|---|---|---|---|
+| 01 | **Interpretador de MIT 41** (`/pre-processador-mit41`) | Organiza o PDF bruto da MIT em subprocessos (AS IS / TO BE / GAP) | [guia](docs/GUIA_DO_ANALISTA.md#1-interpretador-de-mit-41) |
+| 02 | **Buscador de XML** (`/buscador-xml`) | Acha XML de tipo de movimento, mostra a **regra de negócio** dele e baixa higienizado | [guia](docs/GUIA_DO_ANALISTA.md#2-buscador-de-xml) |
+| 03 | **Validador de CNAB** (`/validador-cnab`) | Valida CNAB 240/400 e registro online (BB e Caixa), apontando linha, posição e onde corrigir | [guia](docs/GUIA_DO_ANALISTA.md#3-validador-de-cnab-e-registro-online) |
+| 04 | **Gerador de DataServer** (`/gerador-dataserver`) | Planilha-modelo para o cliente, validação em lote e geração do JSON/XML para o RM | [guia](docs/GUIA_DO_ANALISTA.md#4-gerador-de-dataserver) |
+| 05 | **Análise da MIT 41** (`/analise-mit41`) | Cruza a MIT inteira com a biblioteca de XMLs: o que já existe, o que ajustar, ficha do que criar | [guia](docs/GUIA_DO_ANALISTA.md#5-análise-da-mit-41) |
+| 06 | **Conector RM** (`/conector-rm`) | GET/POST/PUT/DELETE no RM (REST DataServer), como um Postman simplificado | [guia](docs/GUIA_DO_ANALISTA.md#6-conector-rm) |
+| — | **Planilha-modelo** (`/planilha-modelo`) | Página pública para o **cliente** baixar a planilha de cadastro | [guia](docs/PLANILHA_MODELO.md) |
 
-Busca um arquivo XML de referência dentro da base do projeto, agrupado
-por tipo de movimento (Cobrança, Pagamento, Estoque, etc.), e devolve
-uma versão **higienizada** — com todo campo que amarra o XML num
-ambiente específico (coligada, filial, fórmula, convênio, série de
-numeração...) zerado, pronto pra reparametrizar num cliente novo.
+Fluxo típico de uma implantação de Compras/Estoque/Faturamento:
 
-- **Ponte com o MIT 41**: cola a saída já interpretada de um documento
-  MIT 41 (ver ferramenta 3) e a tela sugere automaticamente o grupo de
-  XML certo pra cada movimento, por pontuação de palavra-chave.
-- **Upload avulso**: sobe qualquer XML seu (de outro projeto) só pra
-  higienizar e baixar na hora — nada fica salvo.
-- **Contribuir pra base**: sobe um XML de referência bom, que fica
-  salvo (no banco, não em arquivo — ver seção de arquitetura) e passa a
-  aparecer na busca pra qualquer pessoa depois.
+```
+MIT 41 (PDF) ──► Análise da MIT 41 ──► fichas: pronto / ajustar / criar
+                                         │
+                                         ▼
+                      Buscador de XML (regra de negócio + XML higienizado)
+                                         │
+                                         ▼
+                              parametrização no RM
 
-### 2. Validador de CNAB (`/validador-cnab`)
-
-Valida arquivo de remessa/retorno bancário (CNAB 240 e 400), campo a
-campo, apontando **linha, posição exata e uma sugestão de onde
-corrigir no RM** — não só "está errado", mas onde mexer.
-
-- Estrutura de CNAB 240 (Header/Trailer, Segmentos A/B/P/Q/R) é
-  **universal, padrão FEBRABAN** — vale pra qualquer banco.
-- Camada específica por banco (código de erro, particularidade de
-  layout) é construída sob demanda, banco por banco, sempre a partir do
-  **manual oficial** — nunca por suposição.
-- Corretor automático (`corrigir-240`) só mexe em valor **fixo/constante**
-  (tipo de registro, por exemplo) — nunca em dado de negócio.
-
-### 3. Pré-processador de MIT 41 (`/pre-processador-mit41`)
-
-Recebe o PDF **bruto** de um documento de levantamento MIT 41 (antes de
-qualquer IA) e organiza os subprocessos numa tabela — via regra pura,
-sem inteligência artificial:
-
-- Extrai a tabela-índice de subprocessos usando a **geometria real do
-  PDF** (não o texto linear, que embaralha quando uma célula quebra em
-  várias linhas).
-- Mostra AS IS / TO BE / GAP de cada subprocesso.
-- Já calcula uma sugestão aproximada de grupo de XML (nome + palavra-chave),
-  mais fraca que a Ponte completa, mas útil como ponto de partida.
-- Deixa **explícito** onde a classificação de negócio (efeito em
-  estoque, financeiro, fiscal) exigiria interpretação de linguagem de
-  verdade — isso não é fingido, é marcado como pendente.
-
-### 4. Validador de Registro Online
-
-Valida os dados de um boleto antes do envio pra API de registro online
-do banco — sem depender de nenhuma documentação específica de banco,
-porque as regras aqui são **universais**:
-
-- CPF/CNPJ: algoritmo oficial de dígito verificador (Receita Federal).
-- Datas (vencimento não pode ser antes da emissão), valores (desconto
-  não pode ser maior que o título).
-- Limite legal de multa de 2% — isso é **lei** (Código de Defesa do
-  Consumidor, art. 52 §1º), não regra de banco.
-- Completude de endereço, exigida pra registro na CIP.
+Cadastros: planilha-modelo ──► cliente preenche ──► Gerador de DataServer (valida)
+                                                       │
+                                                       ▼
+                                     Conector RM (na máquina do analista) ──► RM
+```
 
 ---
 
-## Arquitetura
+## Arquitetura em uma tabela
 
 | Peça | Escolha |
 |---|---|
-| Frontend | Next.js (App Router), Tailwind |
-| Backend | FastAPI (Python), empacotado como **uma função só** na Vercel |
-| Banco de dados | Neon (Postgres serverless) |
-| Hospedagem | Vercel (free tier) |
+| Frontend | Next.js 15 (App Router) + Tailwind, em `app/` |
+| Backend | FastAPI (Python), empacotado como **uma única função** serverless na Vercel (`api/index.py`) |
+| Banco | Neon (Postgres serverless); SQLite automático em desenvolvimento |
+| Hospedagem | Vercel |
+| Conector RM | Script Python (só biblioteca padrão) que roda na máquina do analista: `public/conector/conector_rm.py` |
 
-### Por que "uma função só" importa
+Detalhes, rotas, banco e modelo de segurança: [docs/ARQUITETURA.md](docs/ARQUITETURA.md).
 
-A Vercel empacota o backend Python inteiro como uma única função
-serverless. Isso tem uma consequência importante: **se qualquer arquivo
-do backend falhar ao importar, a API inteira cai** — Buscador de XML,
-Validador de CNAB e Pré-processador de MIT 41 juntos, mesmo que o
-problema seja em um só desses módulos. Por isso todo `import` novo
-precisa ser testado antes de subir.
-
-### Por que existe um banco de dados
-
-A Vercel roda em ambiente **sem sistema de arquivos persistente** —
-qualquer coisa que o backend escrever em disco durante uma requisição
-desaparece depois (não sobrevive nem até a próxima chamada). Por isso:
-
-- **Log de uso** das 4 ferramentas fica no Postgres (Neon), não em
-  arquivo de log.
-- **XMLs "contribuídos" pela tela do Buscador** ficam salvos no banco
-  (tabela `xml_personalizado`), não como arquivo `.xml` na pasta —  
-  só assim eles sobrevivem a um novo deploy.
-- A base **oficial** de XMLs (a que vem versionada no repositório, em
-  `data/xml_base/`) continua sendo arquivo — só muda via commit no Git.
+> **Atenção:** como o backend é uma função só, **um erro de import em qualquer arquivo derruba a
+> API inteira**. Por isso existe o `scripts/smoke_test.py`, que roda antes de todo commit.
 
 ---
 
 ## Rodando local
 
 ```powershell
-# Backend
-cd Desktop\Projeto-rm-tools
+# Backend (na raiz do projeto)
 .venv\Scripts\activate
-uvicorn api.index:app --host 127.0.0.1 --port 8000
-# (sem --reload -- trava em algumas máquinas Windows)
+uvicorn api.index:app --host 127.0.0.1 --port 8000   # sem --reload (trava nesta configuração)
 
-# Frontend (outro terminal, com o backend já rodando)
+# Frontend (outro terminal, com o backend rodando)
 npm run dev
 ```
 
-- Backend sozinho: `http://localhost:8000/docs` (tela automática do
-  FastAPI, testa qualquer rota sem precisar do frontend).
-- Site completo: `http://localhost:3000`.
+- Site: `http://localhost:3000`. Em desenvolvimento, `/api/*` é redirecionado para o uvicorn
+  (ver `next.config.mjs`).
+- API sozinha: `http://localhost:8000/docs`.
+- Sem `DATABASE_URL`, o backend usa um SQLite local (`dev.db`).
 
-Sem `DATABASE_URL` configurada, o backend local cai automaticamente
-pra um SQLite (`dev.db`, criado sozinho) — serve pra testar, só não é
-o mesmo banco de produção.
+Testes e regras de trabalho: [docs/DESENVOLVIMENTO.md](docs/DESENVOLVIMENTO.md).
 
-## Variáveis de ambiente (produção, configuradas na Vercel)
-
-| Variável | Pra quê |
-|---|---|
-| `DATABASE_URL` | Connection string do Postgres (Neon) |
-
----
-
-## Estrutura de pastas (resumo)
-
-```
-api/
-├── index.py                  # entrypoint único da API
-└── _lib/
-    ├── db.py                 # conexão com banco (detecta URL sozinho)
-    ├── models.py             # tabelas: RegistroUso, XmlPersonalizado
-    ├── registro_uso.py       # log de uso -- nunca derruba a ferramenta principal
-    ├── xml_cleaner.py        # motor de higienização de XML
-    ├── config.py             # labels e pastas dos 6 grupos de XML
-    ├── mit41/                # parser, matcher e pré-processador de MIT 41
-    ├── cnab/                 # validador/corretor CNAB 240+400, por banco
-    ├── registro_online_boleto/  # validação universal de boleto
-    └── routers/              # rotas HTTP de cada ferramenta
-
-app/
-├── buscador-xml/
-├── validador-cnab/
-├── pre-processador-mit41/
-└── components/
-
-data/
-└── xml_base/                 # XMLs de referência oficiais (versionados)
+```powershell
+python -m pytest -q tests          # testes automatizados
+python scripts/smoke_test.py       # obrigatório antes de cada commit
 ```
 
 ---
 
-## Pegadinhas de ambiente já conhecidas
+## Documentação
 
-- **`uvicorn --reload` trava** nessa configuração de máquina — sempre
-  rodar sem essa flag.
-- **URL de preview da Vercel é foto congelada** — cada deploy tem uma
-  URL própria que nunca atualiza depois. Sempre testar em
-  `acelerador-rm.vercel.app`.
-- **Nome de arquivo duplicado (`arquivo.py.py`)** já causou queda total
-  do site uma vez — o Python não reconhece isso como módulo válido.
-  Depois de mover/renomear arquivo, sempre conferir o nome final.
-- Erro em produção costuma ser genérico
-  (`FUNCTION_INVOCATION_FAILED`). O diagnóstico real fica nos **Build
-  Logs** (erro de instalar dependência) ou **Runtime Logs** (traceback
-  Python) do painel da Vercel.
+| Documento | Para quem | Conteúdo |
+|---|---|---|
+| [docs/GUIA_DO_ANALISTA.md](docs/GUIA_DO_ANALISTA.md) | Analistas | Passo a passo de cada tela, limites e dicas |
+| [docs/ARQUITETURA.md](docs/ARQUITETURA.md) | Desenvolvimento | Peças, rotas da API, banco, segurança, fluxos de dados |
+| [docs/DESENVOLVIMENTO.md](docs/DESENVOLVIMENTO.md) | Desenvolvimento | Ambiente, testes, regras de commit e como estender cada ferramenta |
+| [docs/HISTORICO_E_DECISOES.md](docs/HISTORICO_E_DECISOES.md) | Time e coordenação | O que foi feito em cada frente, decisões tomadas e o que ainda falta validar |
+| [docs/CONFIGURACAO_CONSOLES.md](docs/CONFIGURACAO_CONSOLES.md) | Quem administra | Vercel, Neon, variáveis de ambiente, cadastro de clientes |
+| [docs/PLANILHA_MODELO.md](docs/PLANILHA_MODELO.md) | Analistas | Planilha de cadastro de usuários (GlbUsuarioData) |
 
 ---
 
-## O que este projeto **não** faz (por decisão, não por limitação)
+## O que o projeto **não** faz (por decisão)
 
-- **Não gera arquivo de remessa CNAB.** Só valida e (parcialmente)
-  corrige. O RM já gera remessa — duplicar essa função seria risco
-  financeiro desproporcional ao ganho.
-- **Não usa IA em produção**, em nenhuma das quatro ferramentas. Toda
-  lógica é regra determinística, testável e auditável. Onde a tarefa
-  genuinamente precisa de interpretação de linguagem (parte da análise
-  do MIT 41), isso fica marcado como pendente — nunca é simulado.
+- **Não gera arquivo de remessa CNAB.** Só valida e corrige valores fixos; o RM já gera a remessa.
+- **Não usa IA** em nenhuma ferramenta (ver Princípios).
+- **O servidor não chama o RM do cliente.** Quem chama é o conector, na máquina do analista.
+- **Não guarda senha** do RM em lugar nenhum (nem no navegador, nem no conector, nem no banco).
