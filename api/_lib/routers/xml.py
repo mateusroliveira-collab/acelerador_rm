@@ -19,6 +19,7 @@ from .. import config
 from ..xml_cleaner import limpar_xml
 from ..mit41.parser import parsear_mit41, separar_movimentos
 from ..mit41.matcher import sugerir_grupos
+from ..mit41.analise import Candidato, MovimentoMit, analisar, movimentos_de_subprocessos, movimentos_de_texto
 from ..mit41.pre_processador import (
     pre_processar_documento,
     montar_campos_para_matcher,
@@ -135,16 +136,11 @@ def registrar_sugestao_corrigida(corpo: SugestaoCorrigida, tarefas: BackgroundTa
     return {"registrado": True}
 
 
-@router.post("/pre-processar-mit41")
-async def pre_processar_mit41_bruto(arquivo: UploadFile = File(...)):
-    """
-    Recebe o PDF BRUTO de um documento MIT 41, extrai o texto e separa a
-    estrutura confiável via regras puras.
-    """
+def _ler_pdf_mit(conteudo_bytes: bytes) -> tuple[str, list]:
+    """Texto e tabelas de um PDF de MIT 41 (HTTP 400 se não der para ler)."""
     import pdfplumber
     import io
 
-    conteudo_bytes = await arquivo.read()
     try:
         with pdfplumber.open(io.BytesIO(conteudo_bytes)) as pdf:
             texto = "\n".join(pagina.extract_text() or "" for pagina in pdf.pages)
@@ -162,7 +158,16 @@ async def pre_processar_mit41_bruto(arquivo: UploadFile = File(...)):
             status_code=400,
             detail="O PDF não retornou texto (pode ser um PDF escaneado/imagem, sem texto selecionável).",
         )
+    return texto, tabelas
 
+
+@router.post("/pre-processar-mit41")
+async def pre_processar_mit41_bruto(arquivo: UploadFile = File(...)):
+    """
+    Recebe o PDF BRUTO de um documento MIT 41, extrai o texto e separa a
+    estrutura confiável via regras puras.
+    """
+    texto, tabelas = _ler_pdf_mit(await arquivo.read())
     indice = extrair_indice_de_tabelas(tabelas)
     subprocessos = pre_processar_documento(texto, indice_pre_extraido=indice)
     try:
@@ -189,6 +194,74 @@ async def pre_processar_mit41_bruto(arquivo: UploadFile = File(...)):
             for sp in subprocessos
         ]
     }
+
+
+# --- Análise da MIT 41 inteira x biblioteca ----------------------------------
+
+_LIMITE_PDF = 15_000_000
+_MAX_PERSONALIZADOS_ANALISE = 300
+
+
+def _candidatos_personalizados() -> list[Candidato]:
+    """XMLs contribuídos (não excluídos) que forem de parâmetros de movimento."""
+    extras: list[Candidato] = []
+    try:
+        db = SessionLocal()
+        try:
+            registros = (
+                db.query(XmlPersonalizado)
+                .filter(XmlPersonalizado.excluido.isnot(True))
+                .order_by(XmlPersonalizado.criado_em.desc())
+                .limit(_MAX_PERSONALIZADOS_ANALISE)
+                .all()
+            )
+            for p in registros:
+                conteudo = p.conteudo_original or p.conteudo_limpo or ""
+                try:
+                    regra = regra_de_conteudo(conteudo.encode("utf-8"))
+                except ValueError:
+                    continue
+                extras.append(Candidato(p.grupo, p.nome_arquivo, regra, id=p.id))
+        finally:
+            db.close()
+    except Exception:
+        pass  # sem banco, analisa só com a biblioteca fixa
+    return extras
+
+
+def _responder_analise(movimentos: list[MovimentoMit], tarefas: BackgroundTasks, origem: str) -> dict:
+    if not movimentos:
+        raise HTTPException(
+            status_code=400,
+            detail="Não encontrei nenhum movimento nesse texto. Envie a MIT 41 (PDF ou texto) "
+                   "ou a saída do interpretador com [INICIO_MOVIMENTO].",
+        )
+    resultado = analisar(movimentos, extras=_candidatos_personalizados())
+    tarefas.add_task(registrar_uso, "mit41", "analisar", {"origem": origem, **resultado["resumo"]})
+    return resultado
+
+
+@router.post("/analisar-mit41")
+def analisar_mit41_texto(corpo: TextoMit41, tarefas: BackgroundTasks):
+    """
+    Analisa a MIT 41 inteira (texto bruto ou saída do interpretador): o que
+    cada movimento pede, qual XML da biblioteca atende, o que ajustar e a
+    ficha de criação dos que faltam. Só leitura; nada é gravado.
+    """
+    if len(corpo.texto) > _LIMITE_TEXTO:
+        raise HTTPException(status_code=413, detail=_MSG_LIMITE)
+    return _responder_analise(movimentos_de_texto(corpo.texto), tarefas, "texto")
+
+
+@router.post("/analisar-mit41-pdf")
+async def analisar_mit41_pdf(tarefas: BackgroundTasks, arquivo: UploadFile = File(...)):
+    """Mesma análise, a partir do PDF da MIT 41."""
+    conteudo = await arquivo.read()
+    if len(conteudo) > _LIMITE_PDF:
+        raise HTTPException(status_code=413, detail="PDF muito grande (limite de 15 MB).")
+    texto, tabelas = _ler_pdf_mit(conteudo)
+    subprocessos = pre_processar_documento(texto, indice_pre_extraido=extrair_indice_de_tabelas(tabelas))
+    return _responder_analise(movimentos_de_subprocessos(subprocessos), tarefas, "pdf")
 
 
 @router.post("/limpar-avulso")

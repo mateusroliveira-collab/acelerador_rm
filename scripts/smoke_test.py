@@ -53,6 +53,13 @@ _primeiro = client.get("/api/xml/buscar", params={"grupo": "1.2"}).json()["arqui
 r = client.get("/api/xml/regra", params={"grupo": "1.2", "arquivo": _primeiro})
 checar("GET /api/xml/regra (índice de regras)", r.status_code == 200 and len(r.json()["regra"]["resumo"]) > 0)
 
+r = client.post("/api/xml/analisar-mit41", json={"texto": (
+    "[INICIO_MOVIMENTO]\nNOME_MOVIMENTO=Baixa de Estoque\n"
+    "EFEITO_ESTOQUE=Diminui o saldo atual de estoque\n[FIM_MOVIMENTO]"
+)})
+checar("POST /api/xml/analisar-mit41", r.status_code == 200 and r.json()["resumo"]["total"] == 1
+       and len(r.json()["movimentos"][0]["candidatos"]) > 0)
+
 texto_mit41 = "[INICIO_MOVIMENTO]\nNOME_MOVIMENTO=Baixa de Estoque\n[FIM_MOVIMENTO]"
 r = client.post("/api/xml/sugerir-grupo", json={"texto": texto_mit41})
 checar("POST /api/xml/sugerir-grupo", r.status_code == 200 and r.json()["movimentos"][0]["sugestoes"][0]["grupo"] == "4.1")
