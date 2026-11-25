@@ -66,7 +66,7 @@ def ambiente():
     _RmFalso.recebidos = []
     rm = _subir(ThreadingHTTPServer(("127.0.0.1", 0), _RmFalso))
     cfg = conector.Config(rm=f"http://127.0.0.1:{rm.server_address[1]}", token="ABCD1234",
-                          origens=(ORIGEM,), timeout=5)
+                          origens=(ORIGEM,), timeout=5, detectar_local=False)
     srv = _subir(conector.criar_servidor(cfg, 0))
     yield cfg, f"http://127.0.0.1:{srv.server_address[1]}"
     srv.shutdown()
@@ -308,6 +308,7 @@ def test_dois_cliques_pergunta_guarda_e_reaproveita(tmp_path, monkeypatch):
     respostas = iter(["endereco-ruim", "homolog=https://rm-hml:8051", "producao=https://rm:8051", "",
                       "", "s"])
     monkeypatch.setattr("builtins.input", lambda _: next(respostas))
+    monkeypatch.setattr(conector, "detectar_rm_local", lambda raizes=None: [])  # máquina sem RM
     argv = conector.perguntar_argumentos(arq)
     assert argv == ["--rm", "homolog=https://rm-hml:8051", "--rm", "producao=https://rm:8051",
                     "--origem", conector.SITE_PADRAO, "--aceitar-certificado-autoassinado"]  # padrão: só o oficial
@@ -319,7 +320,7 @@ def test_dois_cliques_pergunta_guarda_e_reaproveita(tmp_path, monkeypatch):
 def test_dois_cliques_com_erro_segura_a_janela(monkeypatch):
     perguntas = []
     monkeypatch.setattr(conector.sys, "argv", ["conector_rm.py"])
-    monkeypatch.setattr(conector, "perguntar_argumentos", lambda: ["--rm", "ftp://x"])
+    monkeypatch.setattr(conector, "perguntar_argumentos", lambda **_: ["--rm", "ftp://x"])
     monkeypatch.setattr("builtins.input", lambda texto: perguntas.append(texto) or "")
     monkeypatch.delenv("CONECTOR_SEM_PAUSA", raising=False)
     assert conector.iniciar() == 2
@@ -368,3 +369,110 @@ def test_origens_do_site_inclui_padrao_dos_deploys():
     ]
     assert conector.origens_do_site(conector.SITE_PADRAO) == [conector.SITE_PADRAO]
     assert conector.origens_do_site("http://localhost:3000") == ["http://localhost:3000", conector.SITE_PADRAO]
+
+
+# --- 1.3.1: endereço colado com o caminho da página ------------------------------------
+
+def test_endereco_com_caminho_vira_so_a_origem():
+    assert conector.so_origem("https://Acelerador-13elcv5dx-x.vercel.app/gerador-dataserver?a=1") == \
+        "https://acelerador-13elcv5dx-x.vercel.app"
+    assert conector.so_origem("acelerador-rm.vercel.app/hub-mit41") == "https://acelerador-rm.vercel.app"
+    assert conector.so_origem("http://localhost:3000/") == "http://localhost:3000"
+
+
+def test_origem_salva_com_caminho_passa_a_funcionar():
+    # exatamente o que estava salvo na máquina do analista (config do 1.2)
+    origens = conector.origens_autorizadas([
+        "https://acelerador-13elcv5dx-mateusroliveira-collab.vercel.app/gerador-dataserver",
+        "https://acelerador-rm.vercel.app",
+    ])
+    assert origens == (
+        "https://acelerador-13elcv5dx-mateusroliveira-collab.vercel.app",
+        "https://acelerador-*-mateusroliveira-collab.vercel.app",
+        "https://acelerador-rm.vercel.app",
+    )
+    assert conector.origem_autorizada("https://acelerador-m2sap88pd-mateusroliveira-collab.vercel.app", origens)
+
+
+# --- 1.4: RM instalado nesta máquina ----------------------------------------------------
+
+def _rm_instalado(raiz, nome, porta_http, alias, instalacao="CorporeRM"):
+    pasta = raiz / instalacao / "RM.Net"
+    pasta.mkdir(parents=True, exist_ok=True)
+    (pasta / f"{nome}.exe.config").write_text(
+        '<configuration><appSettings>'
+        f'<add key="DefaultDB" value="{alias}" /><add key="Port" value="8050" />'
+        f'<add key="HTTPPort" value="{porta_http}" />'
+        '<add key="ConnectionString" value="Password=NAO-PODE-APARECER" />'
+        '</appSettings></configuration>', encoding="utf-8")
+
+
+def test_detecta_rm_local_porta_alias_e_se_esta_no_ar(tmp_path):
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        s.listen()
+        porta_no_ar = s.getsockname()[1]
+        _rm_instalado(tmp_path, "RM.Host.Service1", 59999, "OutroBanco")
+        _rm_instalado(tmp_path, "RM.Host.Service", porta_no_ar, "CorporeRM")
+        _rm_instalado(tmp_path, "RM.Host.Service", 59998, "", instalacao="Base-FIEPE")
+        achados = conector.detectar_rm_local([tmp_path])
+    # por instalação (pasta), e o serviço principal primeiro em cada uma
+    assert [(a["instalacao"], a["servico"]) for a in achados] == [
+        ("Base-FIEPE", "RM.Host.Service"), ("CorporeRM", "RM.Host.Service"), ("CorporeRM", "RM.Host.Service1")]
+    assert achados[1] == {"instalacao": "CorporeRM", "servico": "RM.Host.Service",
+                          "endereco": f"http://localhost:{porta_no_ar}", "porta": porta_no_ar,
+                          "alias": "CorporeRM", "no_ar": True}
+    assert achados[2]["no_ar"] is False
+    assert "NAO-PODE-APARECER" not in json.dumps(achados)
+    assert conector.alias_da_base(f"http://localhost:{porta_no_ar}", achados) == "CorporeRM"
+    assert conector.alias_da_base(f"http://rm.cliente.com:{porta_no_ar}", achados) is None
+    assert conector.detectar_rm_local([tmp_path / "nao-existe"]) == []
+
+
+def test_dois_cliques_sugere_o_rm_desta_maquina(tmp_path, monkeypatch):
+    arq = tmp_path / "cfg.json"
+    monkeypatch.setattr(conector, "detectar_rm_local", lambda raizes=None: [
+        {"instalacao": "Base-FIEPE", "servico": "RM.Host.Service", "endereco": "http://localhost:8061",
+         "porta": 8061, "alias": None, "no_ar": True},
+        {"instalacao": "CorporeRM", "servico": "RM.Host.Service", "endereco": "http://localhost:8051",
+         "porta": 8051, "alias": "CorporeRM", "no_ar": True},
+        {"instalacao": "CorporeRM", "servico": "RM.Host.Service1", "endereco": "http://localhost:8053",
+         "porta": 8053, "alias": "CorporeRM", "no_ar": True},  # mesma instalação: não vira outra base
+    ])
+    monkeypatch.setattr("builtins.input", lambda _: "")  # Enter em tudo
+    argv = conector.perguntar_argumentos(arq)
+    assert argv[:4] == ["--rm", "base-fiepe=http://localhost:8061", "--rm", "corporerm=http://localhost:8051"]
+    assert conector.SITE_PADRAO in argv
+    assert conector.ler_bases([argv[1], argv[3]]) == {"base-fiepe": "http://localhost:8061",
+                                                     "corporerm": "http://localhost:8051"}
+
+
+def test_status_mostra_alias_da_base_local(ambiente, monkeypatch):
+    cfg, base = ambiente
+    cfg.detectar_local = True
+    porta = int(cfg.rm.rsplit(":", 1)[1])
+    cfg.bases = {"local": f"http://localhost:{porta}"}
+    monkeypatch.setattr(conector, "detectar_rm_local", lambda raizes=None: [
+        {"instalacao": "CorporeRM", "servico": "RM.Host.Service", "endereco": f"http://localhost:{porta}",
+         "porta": porta, "alias": "CorporeRM", "no_ar": True}])
+    _, _, r = _chamar(base, "/status")
+    assert r["bases"] == [{"nome": "local", "rm": f"http://localhost:{porta}", "alias": "CorporeRM"}]
+    assert r["rm_local"][0]["alias"] == "CorporeRM" and "porta" not in r["rm_local"][0]
+
+
+def test_atalho_sem_bases_detecta_o_rm_e_usa_o_site_do_atalho(tmp_path, monkeypatch):
+    chamado = {}
+    monkeypatch.setattr(conector, "ARQUIVO_CONFIG", tmp_path / "cfg.json")
+    monkeypatch.setattr(conector, "detectar_rm_local", lambda raizes=None: [
+        {"instalacao": "CorporeRM", "servico": "RM.Host.Service", "endereco": "http://localhost:8051",
+         "porta": 8051, "alias": "CorporeRM", "no_ar": True}])
+    perguntas = []
+    monkeypatch.setattr("builtins.input", lambda texto: perguntas.append(texto) or "")
+    monkeypatch.setattr(conector, "main", lambda argv: chamado.setdefault("argv", argv) and 0)
+    site = "https://acelerador-m2sap88pd-mateusroliveira-collab.vercel.app"
+    assert conector.iniciar(["--origem", site, "--porta", "8765"]) == 0
+    argv = chamado["argv"]
+    assert argv[:2] == ["--rm", "corporerm=http://localhost:8051"]
+    assert site in argv and "https://acelerador-*-mateusroliveira-collab.vercel.app" in argv
+    assert argv[-2:] == ["--porta", "8765"]
+    assert not any("site" in p.lower() for p in perguntas)  # o site veio do atalho: não pergunta

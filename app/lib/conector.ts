@@ -39,8 +39,10 @@ export function mensagemConectorInacessivel(porta: string) {
   );
 }
 
-export type BaseRm = { nome: string; rm: string };
-export type StatusConector = { versao: string; rm: string; bases: BaseRm[] };
+export type BaseRm = { nome: string; rm: string; alias?: string | null };
+/** RM instalado na máquina do analista, achado pelo conector (1.4+). */
+export type RmLocal = { endereco: string; alias: string | null; instalacao: string; servico: string; no_ar: boolean };
+export type StatusConector = { versao: string; rm: string; bases: BaseRm[]; rm_local?: RmLocal[] };
 
 /** Versão mínima do conector para várias bases e "se já existir: pular/alterar". */
 export const VERSAO_MINIMA = "1.1.0";
@@ -93,7 +95,8 @@ function argumentosConector(bases: string, origem: string, porta: string, autoas
   const q = (v: string) => (aspas || v.includes("*") ? `"${v.replace(/"/g, "")}"` : v);
   const linhas = bases.split("\n").map((l) => l.trim()).filter(Boolean);
   const partes: string[] = [];
-  for (const l of linhas.length ? linhas : ["https://SERVIDOR-RM:PORTA"]) partes.push(`--rm ${q(l)}`);
+  // Sem bases: o conector (1.4+) procura o RM instalado nesta máquina e pergunta.
+  for (const l of linhas) partes.push(`--rm ${q(l)}`);
   for (const o of origem ? origensDoSite(origem) : []) partes.push(`--origem ${q(o)}`);
   if (porta && porta !== PORTA_PADRAO) partes.push(`--porta ${porta}`);
   if (autoassinado) partes.push("--aceitar-certificado-autoassinado");
@@ -115,16 +118,21 @@ export function atalhoWindows(bases: string, origem: string, porta: string, auto
     "chcp 65001 >nul",
     "title Conector RM - deixe esta janela aberta",
     'cd /d "%~dp0"',
-    'if not exist "conector_rm.py" (',
+    // O navegador renomeia downloads repetidos ("conector_rm (4).py"): usa o mais novo da pasta.
+    'set "ARQ="',
+    "for /f \"delims=\" %%f in ('dir /b /o:d \"conector_rm*.py\" 2^>nul') do set \"ARQ=%%f\"",
+    'if not defined ARQ (',
     "  echo Coloque este arquivo na mesma pasta do conector_rm.py.",
     "  pause",
     "  exit /b 1",
     ")",
+    'echo Abrindo "%ARQ%" (o conector mais novo desta pasta)...',
+    "echo.",
     "where py >nul 2>nul",
     "if %errorlevel%==0 (",
-    `  py conector_rm.py ${args}`,
+    `  py "%ARQ%" ${args}`,
     ") else (",
-    `  python conector_rm.py ${args}`,
+    `  python "%ARQ%" ${args}`,
     ")",
     "echo.",
     "echo O conector foi encerrado.",

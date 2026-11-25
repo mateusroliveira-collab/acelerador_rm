@@ -58,7 +58,9 @@ que ainda falta validar. Atualizado em 19/11/2026. Os hashes entre parênteses s
 | Conector 1.1: **várias bases** com nome, chave composta `$_$`, "se já existir: pular/alterar" | `7575f2f` |
 | Tela **Evento Contábil Automático** (substitui o Conector RM): puxar, anexar JSON, trocar coligada, enviar | `7575f2f` |
 | **Hub MIT 41**: Interpretador + Análise numa tela, PDF lido uma vez | `7575f2f` |
-| Conector 1.2: abre com dois cliques (pergunta e guarda a configuração), atalho `.bat`, código de pareamento fixo e copiado | (este commit) |
+| Conector 1.2: abre com dois cliques (pergunta e guarda a configuração), atalho `.bat`, código de pareamento fixo e copiado | `8a226fc` |
+| Conector 1.3: aceita os deploys da Vercel (`acelerador-*-equipe`), `/ping` e diagnóstico na tela | `b09db7c` |
+| Conector 1.3.1/1.4: endereço do site sem o caminho da página; `.bat` abre o conector mais novo da pasta; **detecta o RM instalado** (porta e alias) e sugere as bases | (este commit: ver git log) |
 
 ## 2. Decisões
 

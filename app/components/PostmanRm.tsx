@@ -215,6 +215,13 @@ export function PostmanRm({
   }, [registros.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const variasBases = (status?.bases?.length ?? 0) > 1;
+  // Instalações do RM nesta máquina (no ar) que não estão entre as bases abertas no conector.
+  const outrasInstalacoes = (status?.rm_local ?? []).filter(
+    (r, i, todos) =>
+      r.no_ar &&
+      todos.findIndex((x) => x.instalacao === r.instalacao) === i &&
+      !(status?.bases ?? []).some((b) => todos.some((x) => x.instalacao === r.instalacao && b.rm === x.endereco))
+  );
   const conectorAntigo = status !== null && !versaoAtende(status.versao);
   const raiz = PREFIXO_DS + dataserver.trim();
   const caminhoAuto =
@@ -273,7 +280,7 @@ export function PostmanRm({
       const dados = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(`${dados.erro ?? "Conector recusou."} ${dados.como_corrigir ?? ""}`.trim());
       const bases = Array.isArray(dados.bases) && dados.bases.length ? dados.bases : [{ nome: "", rm: dados.rm }];
-      setStatus({ versao: dados.versao, rm: dados.rm, bases });
+      setStatus({ versao: dados.versao, rm: dados.rm, bases, rm_local: Array.isArray(dados.rm_local) ? dados.rm_local : [] });
       setBaseConsulta(bases[0].nome);
       setBaseEnvio(bases[bases.length > 1 ? 1 : 0].nome);
       salvarConexao({ porta: portaUsada, token: token.trim() });
@@ -560,7 +567,18 @@ export function PostmanRm({
       {status && (
         <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">
           ✓ Conectado (conector {status.versao}) · base{status.bases.length > 1 ? "s" : ""}:{" "}
-          {status.bases.map((b) => `${b.nome ? `${b.nome} = ` : ""}${b.rm}`).join(" · ")}
+          {status.bases
+            .map((b) => `${b.nome ? `${b.nome} = ` : ""}${b.rm}${b.alias ? ` (alias ${b.alias})` : ""}`)
+            .join(" · ")}
+        </p>
+      )}
+      {status && outrasInstalacoes.length > 0 && (
+        <p className="mt-1 text-xs text-muted">
+          Também há RM instalado neste computador fora do conector:{" "}
+          {outrasInstalacoes
+            .map((r) => `${r.instalacao} = ${r.endereco}${r.alias ? ` (alias ${r.alias})` : ""}`)
+            .join(" · ")}
+          . Para usar, inclua nas bases e abra o conector de novo.
         </p>
       )}
       {avisoConexao && (
@@ -587,7 +605,10 @@ export function PostmanRm({
             sua máquina (Python 3.9+, nada para instalar).
           </p>
           <ol className="mt-2 list-decimal space-y-1 pl-5 text-ink">
-            <li>Informe as bases do RM abaixo (uma por linha, <code>nome=endereço</code>, ou só o endereço).</li>
+            <li>
+              <strong>RM instalado neste computador?</strong> Deixe as bases em branco: o conector acha sozinho o
+              endereço e o alias e só pergunta &quot;Usar estas bases?&quot;. RM em outro servidor: informe abaixo.
+            </li>
             <li>
               Baixe os <strong>dois arquivos</strong> e salve na <strong>mesma pasta</strong>: o{" "}
               <code>conector_rm.py</code> e o atalho <code>abrir_conector.bat</code>.
@@ -599,15 +620,41 @@ export function PostmanRm({
             <li>O código fica guardado: nas próximas vezes é o mesmo. Deixe a janela aberta enquanto usa a tela.</li>
           </ol>
           <label className="mt-3 flex flex-col gap-1">
-            <span className={rotulo}>Bases do RM (uma por linha)</span>
+            <span className={rotulo}>Bases do RM (opcional; uma por linha, nome=endereço)</span>
             <textarea
               value={basesTexto}
               onChange={(e) => setBasesTexto(e.target.value)}
               rows={2}
-              placeholder={"homolog=https://rm-homolog.cliente.com.br:8051\nproducao=https://rm.cliente.com.br:8051"}
+              placeholder={"vazio = o conector procura o RM deste computador\nou: homolog=https://rm-homolog.cliente.com.br:8051"}
               className={`${campo} font-mono text-xs`}
             />
           </label>
+          <details className="mt-2">
+            <summary className="cursor-pointer text-ink">Onde acho o endereço e o alias do RM?</summary>
+            <ul className="mt-1 list-disc space-y-1 pl-5">
+              <li>
+                <strong>Endereço:</strong> é o servidor do RM + a porta HTTP do serviço (a do REST). Ela está no arquivo{" "}
+                <code>RM.Host.Service.exe.config</code>, na pasta <code>RM.Net</code> da instalação (ex.:{" "}
+                <code>C:\totvs\CorporeRM\RM.Net</code>), na linha <code>HTTPPort</code>. RM neste computador:{" "}
+                <code>http://localhost:8051</code> (8051 é o padrão).
+              </li>
+              <li>
+                <strong>Alias (banco):</strong> não se informa aqui nem no conector. Quem decide é o serviço do RM: linha{" "}
+                <code>DefaultDB</code> do mesmo arquivo (ex.: <code>CorporeRM</code>), definido no <code>Alias.dat</code>.
+                Cada instalação/serviço do RM tem o seu; para usar dois bancos, coloque uma base para cada serviço.
+              </li>
+              <li>
+                Para conferir se o endereço está certo: <code>http://localhost:8051/rmsrestdataserver/rest/GlbUsuarioData</code>{" "}
+                no navegador deve pedir usuário e senha (o RM está respondendo).
+              </li>
+              <li>
+                Não use a porta do RM no campo <strong>Porta do conector</strong>: lá vai a do conector (8765).
+              </li>
+            </ul>
+            <button onClick={() => setBasesTexto("http://localhost:8051")} className={`${botaoSec} mt-2`}>
+              Preencher com o RM deste computador (http://localhost:8051)
+            </button>
+          </details>
           <label className="mt-2 flex items-center gap-2 text-ink">
             <input type="checkbox" checked={autoassinado} onChange={(e) => setAutoassinado(e.target.checked)} />
             O RM usa certificado HTTPS próprio (autoassinado)
@@ -627,8 +674,6 @@ export function PostmanRm({
                   "abrir_conector.bat"
                 )
               }
-              disabled={!basesTexto.trim()}
-              title={basesTexto.trim() ? "" : "Informe as bases do RM acima"}
               className="rounded-md bg-action px-3 py-1.5 font-medium text-white transition hover:bg-action-hover disabled:opacity-50"
             >
               2. Baixar atalho abrir_conector.bat (Windows)

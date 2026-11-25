@@ -58,7 +58,7 @@ from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-VERSAO = "1.3.0"
+VERSAO = "1.4.0"
 PORTA_PADRAO = 8765
 PREFIXOS_PERMITIDOS = ("/rmsrestdataserver/", "/api/")
 METODOS = ("GET", "POST", "PUT", "DELETE")
@@ -83,6 +83,8 @@ class Config:
     log: list = field(default_factory=list)  # só para testes; o console recebe o mesmo texto
     # nome -> https://host:porta. Vazio = só a base `rm` (nome "principal").
     bases: dict = field(default_factory=dict)
+    # Procura o RM instalado nesta máquina para mostrar o alias de cada base.
+    detectar_local: bool = True
 
     def lista_bases(self) -> dict:
         return dict(self.bases) if self.bases else {"principal": self.rm}
@@ -122,6 +124,35 @@ def _casa_curinga(valor: str, padrao: str) -> bool:
     return re.fullmatch("[a-z0-9-]+".join(partes), valor) is not None
 
 
+def so_origem(endereco: str) -> str:
+    """
+    O navegador identifica o site só por protocolo + servidor (a "origem"):
+    'https://site.vercel.app/gerador-dataserver?x=1' -> 'https://site.vercel.app'.
+    Mantém o * dos curingas.
+    """
+    endereco = (endereco or "").strip()
+    if not endereco:
+        return ""
+    if "://" not in endereco:
+        endereco = "https://" + endereco
+    esquema, _, resto = endereco.partition("://")
+    servidor = resto.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0]
+    return f"{esquema.lower()}://{servidor.lower()}"
+
+
+def origens_autorizadas(informadas: list[str]) -> tuple[str, ...]:
+    """
+    --origem informadas -> lista final: só a origem de cada endereço (sem
+    caminho), mais o padrão dos deploys da Vercel e o site oficial.
+    """
+    saida: list[str] = []
+    for o in informadas:
+        for x in ([so_origem(o)] if "*" in o else origens_do_site(o)):
+            if x and x not in saida:
+                saida.append(x)
+    return tuple(saida)
+
+
 def origens_do_site(endereco: str) -> list[str]:
     """
     Endereço do site -> origens a autorizar. Endereço de deploy da Vercel
@@ -130,7 +161,7 @@ def origens_do_site(endereco: str) -> list[str]:
     """
     import re
 
-    endereco = endereco.strip().rstrip("/").lower()
+    endereco = so_origem(endereco)
     saida = [endereco] if endereco else []
     m = re.fullmatch(r"https://([a-z0-9-]+?)-[a-z0-9]{9}-([a-z0-9-]+)\.vercel\.app", endereco)
     if m:
@@ -473,9 +504,12 @@ def criar_servidor(cfg: Config, porta: int = PORTA_PADRAO) -> ThreadingHTTPServe
                 return self._responder(404, {"ok": False, "erro": "Rota inexistente."})
             if not self._checar_acesso():
                 return
-            bases = [{"nome": n, "rm": u} for n, u in cfg.lista_bases().items()]
+            rm_local = detectar_rm_local() if cfg.detectar_local else []
+            bases = [{"nome": n, "rm": u, "alias": alias_da_base(u, rm_local)} for n, u in cfg.lista_bases().items()]
             self._responder(200, {"ok": True, "conector": True, "versao": VERSAO, "rm": cfg.rm,
-                                  "bases": bases, "aceita_autoassinado": cfg.aceitar_autoassinado})
+                                  "bases": bases, "aceita_autoassinado": cfg.aceitar_autoassinado,
+                                  "rm_local": [{k: r[k] for k in ("endereco", "alias", "instalacao", "servico", "no_ar")}
+                                               for r in rm_local]})
 
         def do_POST(self):  # noqa: N802
             rota = self.path.split("?")[0]
@@ -528,6 +562,95 @@ def ler_bases(valores: list[str]) -> dict:
     return bases
 
 
+# --- RM instalado nesta máquina ----------------------------------------------
+
+
+def _pastas_totvs() -> list[Path]:
+    if sys.platform != "win32":
+        return []
+    unidade = os.environ.get("SystemDrive", "C:")
+    return [Path(unidade + "\\") / "totvs"]
+
+
+def _porta_aberta(porta: int) -> bool:
+    try:
+        with socket.create_connection(("127.0.0.1", porta), timeout=0.3):
+            return True
+    except OSError:
+        return False
+
+
+def detectar_rm_local(raizes: list[Path] | None = None) -> list[dict]:
+    """
+    Procura o RM instalado (RM.Host*.exe.config em <raiz>/*/RM.Net) e devolve,
+    por serviço: porta HTTP (REST), alias (DefaultDB) e se está no ar. Lê só
+    essas duas chaves -- nada de string de conexão ou senha.
+    """
+    import re
+
+    achados: list[dict] = []
+    portas_vistas: set = set()
+    for raiz in (_pastas_totvs() if raizes is None else raizes):
+        try:
+            arquivos = list(raiz.glob("*/RM.Net/RM.Host*.exe.config")) + list(raiz.glob("RM.Net/RM.Host*.exe.config"))
+        except OSError:
+            continue
+        # Por instalação (pasta); em cada uma, o serviço principal (RM.Host.Service) primeiro.
+        arquivos.sort(key=lambda a: (a.parent.parent.name.lower(), a.name != "RM.Host.Service.exe.config", a.name))
+        for arq in arquivos:
+            try:
+                texto = arq.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            porta = re.search(r'key="HTTPPort"\s+value="(\d+)"', texto, re.I)
+            alias = re.search(r'key="DefaultDB"\s+value="([^"]*)"', texto, re.I)
+            if not porta or int(porta.group(1)) in portas_vistas:
+                continue
+            portas_vistas.add(int(porta.group(1)))
+            achados.append({
+                "instalacao": arq.parent.parent.name,
+                "servico": arq.name.removesuffix(".exe.config"),
+                "endereco": f"http://localhost:{porta.group(1)}",
+                "porta": int(porta.group(1)),
+                "alias": alias.group(1) if alias else None,
+                "no_ar": _porta_aberta(int(porta.group(1))),
+            })
+    return achados
+
+
+def sugerir_bases(rm_local: list[dict]) -> list[str]:
+    """
+    Uma base por instalação no ar ("nome=endereço"), pelo serviço principal.
+    As outras instâncias da mesma instalação (Service1, 2...) são o mesmo banco.
+    """
+    saida, instalacoes = [], set()
+    for r in rm_local:
+        if not r["no_ar"] or r["instalacao"] in instalacoes:
+            continue
+        instalacoes.add(r["instalacao"])
+        nome = _re_nome(r["instalacao"])
+        saida.append(f"{nome}={r['endereco']}")
+    return saida
+
+
+def _re_nome(texto: str) -> str:
+    import re
+
+    nome = re.sub(r"[^a-z0-9_-]+", "-", texto.lower()).strip("-")
+    return nome or "rm"
+
+
+def alias_da_base(url: str, rm_local: list[dict]) -> str | None:
+    """Alias (DefaultDB) de uma base que aponta para um RM desta máquina."""
+    partes = urllib.parse.urlsplit(url)
+    if (partes.hostname or "").lower() not in ("localhost", "127.0.0.1", "::1"):
+        return None
+    for r in rm_local:
+        if r["porta"] == partes.port:
+            return r["alias"]
+    return None
+
+
 # --- Configuração guardada e modo "dois cliques" ------------------------------
 
 
@@ -573,9 +696,14 @@ def _perguntar(texto: str, padrao: str = "") -> str:
     return resposta or padrao
 
 
-def perguntar_argumentos(arquivo: Path | None = None) -> list[str]:
-    """Modo dois cliques: usa a configuração guardada ou pergunta e guarda."""
+def perguntar_argumentos(arquivo: Path | None = None, origens: list[str] | None = None) -> list[str]:
+    """
+    Modo dois cliques: usa a configuração guardada ou pergunta e guarda.
+    `origens`: endereço(s) do site já informados (ex.: pelo atalho .bat) -- aí não pergunta o site.
+    """
     dados = ler_config(arquivo)
+    if origens:
+        dados = {**dados, "origem": list(origens_autorizadas(origens))}
     bases = [b for b in dados.get("bases", []) if isinstance(b, str) and b.strip()]
     print(f"Conector RM {VERSAO}\n")
     if bases:
@@ -585,6 +713,23 @@ def perguntar_argumentos(arquivo: Path | None = None) -> list[str]:
         print(f"  Site: {', '.join(dados.get('origem') or [SITE_PADRAO])}\n")
         if _perguntar("Usar esta configuração? (S/n)", "S").lower().startswith("s"):
             return _argumentos(dados)
+    locais = detectar_rm_local()
+    sugestao = sugerir_bases(locais)
+    if sugestao:
+        print("Encontrei o RM instalado neste computador:")
+        for b in sugestao:
+            nome, _, url = b.partition("=")
+            r = next(x for x in locais if x["endereco"] == url)
+            alias = r["alias"] or "padrão da instalação"
+            print(f"  {nome:<16} {url:<24} alias {alias}  (pasta {r['instalacao']})")
+        texto = "Usar estas bases?" if len(sugestao) > 1 else "Usar esta base?"
+        if _perguntar(f"{texto} (S/n)", "S").lower().startswith("s"):
+            bases = sugestao
+            dados = {**dados, "bases": bases, "origem": _origens_ou_pergunta(dados, origens), "autoassinado": False}
+            salvar_config(dados, arquivo)
+            print(f"\nConfiguração guardada em {(arquivo or ARQUIVO_CONFIG).name} (na próxima vez é só dar dois cliques).\n")
+            return _argumentos(dados)
+        print()
     print("Endereço do RM (o do REST/Host, ex.: https://rm.cliente.com.br:8051).")
     print("Para mais de uma base, use nome=endereço (ex.: homolog=https://rm-hml:8051).")
     bases = []
@@ -600,12 +745,20 @@ def perguntar_argumentos(arquivo: Path | None = None) -> list[str]:
             print(f"  {e}")
             continue
         bases.append(b)
-    origem = _perguntar("Endereço do site do Acelerador", (dados.get("origem") or [SITE_PADRAO])[0])
+    origem = _origens_ou_pergunta(dados, origens)
     autoassinado = _perguntar("O RM usa certificado HTTPS próprio (autoassinado)? (s/N)", "N").lower().startswith("s")
-    dados = {**dados, "bases": bases, "origem": origens_do_site(origem), "autoassinado": autoassinado}
+    dados = {**dados, "bases": bases, "origem": origem, "autoassinado": autoassinado}
     salvar_config(dados, arquivo)
     print(f"\nConfiguração guardada em {(arquivo or ARQUIVO_CONFIG).name} (na próxima vez é só dar dois cliques).\n")
     return _argumentos(dados)
+
+
+def _origens_ou_pergunta(dados: dict, origens: list[str] | None) -> list[str]:
+    if origens:
+        return list(origens_autorizadas(origens))
+    origem = so_origem(_perguntar("Endereço do site do Acelerador (pode colar o link da página)",
+                                  (dados.get("origem") or [SITE_PADRAO])[0]))
+    return origens_do_site(origem)
 
 
 def _argumentos(dados: dict) -> list[str]:
@@ -640,7 +793,7 @@ def main(argv: list[str] | None = None, arquivo_config: Path | None = None) -> i
     except ValueError as e:
         print(f"Erro: {e}", file=sys.stderr)
         return 2
-    origens = tuple(o.rstrip("/") for o in a.origem) or ("http://localhost:3000",)
+    origens = origens_autorizadas(a.origem) or ("http://localhost:3000",)
     cfg = Config(rm=next(iter(bases.values())), token=codigo_de_pareamento(a.novo_codigo, arquivo_config),
                  origens=origens, aceitar_autoassinado=a.aceitar_certificado_autoassinado, timeout=a.timeout,
                  bases=bases)
@@ -677,13 +830,37 @@ def main(argv: list[str] | None = None, arquivo_config: Path | None = None) -> i
     return 0
 
 
-def iniciar() -> int:
-    """Ponto de entrada. Sem argumentos (dois cliques): pergunta e não deixa a janela sumir em erro."""
-    if len(sys.argv) > 1:
-        return main()
+def _separar_origens(args: list[str]) -> tuple[list[str], list[str]]:
+    """(valores de --origem, demais argumentos)."""
+    origens, resto, i = [], [], 0
+    while i < len(args):
+        if args[i] == "--origem" and i + 1 < len(args):
+            origens.append(args[i + 1])
+            i += 2
+            continue
+        if args[i].startswith("--origem="):
+            origens.append(args[i].split("=", 1)[1])
+        else:
+            resto.append(args[i])
+        i += 1
+    return origens, resto
+
+
+def iniciar(args: list[str] | None = None) -> int:
+    """
+    Ponto de entrada. Sem --rm (dois cliques, ou o atalho sem bases): descobre
+    ou pergunta as bases, e não deixa a janela sumir em erro.
+    """
+    args = sys.argv[1:] if args is None else args
+    if any(a == "--rm" or a.startswith("--rm=") or a in ("-h", "--help") for a in args):
+        return main(args)
     try:
-        codigo = main(perguntar_argumentos())
-    except (EOFError, KeyboardInterrupt):
+        origens, resto = _separar_origens(args)
+        codigo = main(perguntar_argumentos(origens=origens or None) + resto)
+    except KeyboardInterrupt:
+        return 1
+    except EOFError:
+        print("\nA janela não recebeu a resposta. Abra o conector com dois cliques (ou pelo abrir_conector.bat).")
         return 1
     except Exception as e:  # noqa: BLE001 -- mostrar qualquer erro antes de a janela fechar
         print(f"\nErro inesperado: {e}")

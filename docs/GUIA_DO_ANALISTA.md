@@ -212,7 +212,18 @@ conector é um pequeno programa Python que roda na sua máquina e repassa as cha
 
 ### Primeira vez (botão "Como abrir o conector")
 1. Tenha **Python 3.9+** instalado (nada mais para instalar).
-2. Informe as **bases** do RM, uma por linha, `nome=endereço` (ou só o endereço, se for uma):
+2. **RM instalado no seu computador?** Deixe as bases em branco: ao abrir, o conector (1.4+) procura o
+   RM em `C:\totvs\<instalação>\RM.Net` (arquivo `RM.Host.Service.exe.config`: `HTTPPort` = porta do
+   REST, `DefaultDB` = alias), mostra uma base por instalação com o alias e pergunta "Usar estas
+   bases?". Exemplo numa máquina com duas instalações:
+   ```
+   base-fiepe   http://localhost:8061   alias padrão da instalação
+   corporerm    http://localhost:8051   alias CorporeRM
+   ```
+   O **alias não se informa** no site nem no conector: é o `DefaultDB` do serviço do RM. Depois de
+   conectar, a tela mostra o alias de cada base.
+
+   RM em outro servidor: informe as **bases**, uma por linha, `nome=endereço` (ou só o endereço):
    ```
    homolog=https://rm-homolog.cliente.com.br:8051
    producao=https://rm.cliente.com.br:8051
@@ -229,6 +240,13 @@ conector: **não muda a cada abertura** (para trocar: `--novo-codigo`). Também 
 cliques direto no `conector_rm.py`: na primeira vez ele pergunta o endereço do RM e do site e guarda.
 Se algo der errado, a janela não fecha sozinha: mostra o erro e espera um Enter.
 
+> Baixou várias vezes e o navegador salvou como `conector_rm (2).py`, `(3)`...? Tudo bem: o
+> `abrir_conector.bat` abre sempre o **mais novo** da pasta (a janela mostra qual).
+>
+> Para testar se o conector está no ar, abra `http://127.0.0.1:8765/ping` no navegador: aparece a
+> versão e se o site é aceito. **Não** teste em `localhost:8051` (ou a porta do RM): essa é a porta do
+> próprio RM, que não mostra nada na página inicial.
+>
 > A janela abriu e fechou na hora? É o conector antigo (até 1.1) aberto com dois cliques, sem o
 > comando. Baixe o novo e use o `abrir_conector.bat`.
 > Conector antigo (1.0): funciona com uma base só e sem "se já existir". A tela avisa; baixe o novo.
