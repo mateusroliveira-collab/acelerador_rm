@@ -11,8 +11,39 @@ const CHAVE_SESSAO = "conector_rm";
 
 export type ConexaoConector = { porta: string; token: string };
 
+/** A página está sendo servida pelo próprio conector (http://127.0.0.1:<porta>)? */
+function paginaDoConector(porta: string) {
+  if (typeof window === "undefined") return false;
+  const { hostname, port } = window.location;
+  return (hostname === "127.0.0.1" || hostname === "localhost") && port === porta;
+}
+
 export function urlConector(porta: string) {
-  return `http://127.0.0.1:${porta}`;
+  // Página servida pelo conector: mesmo endereço (sem bloqueio de "rede local" do navegador).
+  return paginaDoConector(porta) ? window.location.origin : `http://127.0.0.1:${porta}`;
+}
+
+/** Endereço para abrir o Acelerador pelo conector (2.0+). */
+export const ENDERECO_LOCAL = "http://127.0.0.1:8765";
+
+export type ConectorLocal = { token: string; porta: string; versao: string };
+
+/**
+ * Se esta página foi aberta pelo conector (2.0+), ele entrega o código de
+ * pareamento: a tela conecta sozinha, sem nada para digitar.
+ */
+export async function detectarConectorLocal(): Promise<ConectorLocal | null> {
+  if (typeof window === "undefined") return null;
+  const { hostname } = window.location;
+  if (hostname !== "127.0.0.1" && hostname !== "localhost") return null;
+  try {
+    const r = await fetch("/conector/pareamento", { cache: "no-store" });
+    if (!r.ok) return null;
+    const d = await r.json();
+    return d?.token ? { token: String(d.token), porta: String(d.porta), versao: String(d.versao) } : null;
+  } catch {
+    return null;
+  }
 }
 
 export function lerConexaoSalva(): ConexaoConector | null {
@@ -39,7 +70,9 @@ export function mensagemConectorInacessivel(porta: string) {
   );
 }
 
-export type BaseRm = { nome: string; rm: string; alias?: string | null };
+/** Resultado do teste da base feito pelo conector (GET sem senha: 401 = REST do RM respondendo). */
+export type TesteBase = { responde: boolean; http: number | null; rest: boolean; mensagem: string; como_corrigir: string };
+export type BaseRm = { nome: string; rm: string; alias?: string | null; teste?: TesteBase | null };
 /** RM instalado na máquina do analista, achado pelo conector (1.4+). */
 export type RmLocal = { endereco: string; alias: string | null; instalacao: string; servico: string; no_ar: boolean };
 export type StatusConector = { versao: string; rm: string; bases: BaseRm[]; rm_local?: RmLocal[] };

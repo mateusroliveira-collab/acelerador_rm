@@ -210,7 +210,35 @@ JSON do GET do RM. O mesmo quadro aparece no Cadastro da GUSUARIO.
 Por que um conector: o site roda na nuvem e não enxerga o RM do cliente (rede interna/VPN). O
 conector é um pequeno programa Python que roda na sua máquina e repassa as chamadas.
 
-### Primeira vez (botão "Como abrir o conector")
+### Como conectar (conector 2.0)
+1. Tenha **Python 3.9+** instalado (nada mais para instalar).
+2. Baixe o `conector_rm.py` (link na tela de envio) e dê **dois cliques** nele.
+3. Na primeira vez, se houver RM instalado no seu computador, ele mostra as instalações achadas
+   (endereço e alias) e pergunta "Usar estas bases?" — Enter. Sem RM local, ele abre sem base.
+4. O conector **abre o navegador sozinho** em `http://127.0.0.1:8765`: é o Acelerador completo,
+   servido pelo conector. A tela de envio já aparece **conectada** — sem código de pareamento, sem
+   porta e sem bloqueio de "rede local" do navegador.
+5. **Bases de clientes:** no quadro de conexão, *Nome da base* + *Endereço do RM* →
+   **Adicionar base do RM**. O conector testa se o RM responde nesse endereço (sem senha) antes de
+   guardar e mostra o resultado em cada base (bolinha verde/vermelha + motivo). Base em VPN: conecte a
+   VPN antes. As bases ficam guardadas para as próximas vezes; *remover* tira só do conector.
+6. Informe usuário e senha do RM (ficam só na memória da aba) e use a tela normalmente.
+
+**Endereço da base** = servidor do RM + porta HTTP do serviço (a do REST): linha `HTTPPort` do
+`RM.Host.Service.exe.config`, na pasta `RM.Net` da instalação (padrão 8051). Exemplos:
+`http://localhost:8051` (RM no seu computador), `https://rm.cliente.com.br:8051` (servidor do
+cliente). **Alias (banco):** não se informa — é o `DefaultDB` do serviço do RM; a tela mostra o alias
+das bases locais.
+
+Para conferir se o conector está no ar: `http://127.0.0.1:8765/ping`. Não teste na porta do RM
+(ex.: `localhost:8051`): a página inicial do RM fica em branco mesmo.
+
+> O site na Vercel continua funcionando com o conector (código de pareamento + "Como abrir o
+> conector"), mas depende da permissão de "rede local" do navegador, que a política da empresa pode
+> bloquear. **Prefira abrir pelo conector** (`http://127.0.0.1:8765`).
+
+<details><summary>Modo antigo (site na Vercel + atalho .bat)</summary>
+
 1. Tenha **Python 3.9+** instalado (nada mais para instalar).
 2. **RM instalado no seu computador?** Deixe as bases em branco: ao abrir, o conector (1.4+) procura o
    RM em `C:\totvs\<instalação>\RM.Net` (arquivo `RM.Host.Service.exe.config`: `HTTPPort` = porta do
@@ -251,6 +279,8 @@ Se algo der errado, a janela não fecha sozinha: mostra o erro e espera um Enter
 > comando. Baixe o novo e use o `abrir_conector.bat`.
 > Conector antigo (1.0): funciona com uma base só e sem "se já existir". A tela avisa; baixe o novo.
 
+</details>
+
 ### Eventos contábeis: puxar, juntar e enviar
 1. **DataServer**: informe o nome do DataServer de eventos contábeis (o que aparece em
    `/rmsrestdataserver/rest/<NOME>`). Fica lembrado no navegador. O campo chave já vem
@@ -280,6 +310,8 @@ inexistente na base ou campo obrigatório faltando).
 ### Erros comuns
 | Mensagem | Causa provável | Como corrigir |
 |---|---|---|
+| "Nenhuma base do RM configurada" | Conector sem base | Adicione a base no quadro de conexão (*Adicionar base do RM*) |
+| Base com bolinha vermelha / "O RM não respondeu" | Endereço ou porta errados, VPN desligada, serviço do RM parado | Siga o "como corrigir" mostrado ao lado da base |
 | Não encontrei o conector | Janela fechada, porta errada (ex.: a do RM, 8051, no campo "Porta do conector") ou permissão de rede local negada | Abra o conector; use a porta da linha "Porta:" da janela (padrão 8765); permita o acesso |
 | Código de pareamento inválido | Código digitado errado, ou `--novo-codigo` usado | Cole de novo (Ctrl+V logo depois de abrir o conector) |
 | Porta já está em uso | O conector já está aberto em outra janela | Use a janela que já está aberta, ou feche-a |

@@ -7,8 +7,16 @@ fica na rede interna do cliente. Este programa roda na máquina do analista
 (que enxerga o RM) e repassa as chamadas GET/POST/PUT/DELETE da tela para o
 REST do RM.
 
+Desde a 2.0 o conector também SERVE O ACELERADOR: ao abrir, o navegador vai
+para http://127.0.0.1:8765, e o conector busca as páginas do site oficial e
+as entrega. Página e conector ficam no mesmo endereço: sem bloqueio de "rede
+local" do navegador, sem código para digitar e sem endereço de site para
+acertar. As bases do RM são adicionadas e testadas pela própria tela.
+
 Segurança:
-  - escuta só em 127.0.0.1 (nada de fora da máquina consegue falar com ele);
+  - escuta só em 127.0.0.1 (nada de fora da máquina consegue falar com ele) e
+    só atende pelos nomes 127.0.0.1/localhost (contra "DNS rebinding");
+  - só busca páginas no site oficial do Acelerador (--site);
   - exige o CÓDIGO DE PAREAMENTO mostrado ao abrir (outro site aberto no
     navegador não consegue usá-lo);
   - só aceita chamadas do navegador vindas das origens informadas (--origem;
@@ -23,13 +31,15 @@ Segurança:
 Requisitos: Python 3.9+ (só biblioteca padrão, nada para instalar).
 
 Uso:
-  Dois cliques no arquivo (ou "python conector_rm.py" sem nada): pergunta o
-  endereço do RM e do site na primeira vez e guarda em conector_rm_config.json,
-  ao lado deste arquivo. Ou pelo comando montado na tela:
+  Dois cliques no arquivo (ou "python conector_rm.py" sem nada): procura o RM
+  instalado neste computador, abre o navegador no Acelerador e guarda a
+  configuração em conector_rm_config.json, ao lado deste arquivo. Bases de
+  clientes (VPN/servidor) são adicionadas pela tela. Ou pelo comando:
   python conector_rm.py --rm https://rm.cliente.com.br:8051 --origem https://SEU-APP.vercel.app
   Várias bases (a tela escolhe origem e destino pelo nome):
   python conector_rm.py --rm homolog=https://rm-hml:8051 --rm producao=https://rm:8051 --origem https://SEU-APP.vercel.app
   Opções: --porta 8765   --aceitar-certificado-autoassinado   --timeout 60   --novo-codigo
+           --site https://acelerador-rm.vercel.app   --sem-navegador
 
 O CÓDIGO DE PAREAMENTO é gerado uma vez e guardado no mesmo arquivo: não muda
 a cada abertura (use --novo-codigo para trocar). Ele também é copiado para a
@@ -43,6 +53,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import concurrent.futures
 import json
 import os
 import secrets
@@ -50,6 +61,7 @@ import socket
 import ssl
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -58,7 +70,7 @@ from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-VERSAO = "1.4.0"
+VERSAO = "2.0.0"
 PORTA_PADRAO = 8765
 PREFIXOS_PERMITIDOS = ("/rmsrestdataserver/", "/api/")
 METODOS = ("GET", "POST", "PUT", "DELETE")
@@ -68,6 +80,9 @@ MAX_REGISTROS_LOTE = 500
 SEPARADOR_CHAVE = "$_$"  # chave composta no REST do RM (ex.: CODCOLIGADA$_$CODEVENTO = "1$_$1")
 SE_EXISTIR = ("erro", "pular", "alterar")
 SITE_PADRAO = "https://acelerador-rm.vercel.app"
+ROTA_TESTE_RM = "/rmsrestdataserver/rest/GlbUsuarioData"  # sem senha: 401 = REST do RM respondendo
+MAX_CORPO_SITE = 20_000_000  # uploads de planilha pela tela servida pelo conector
+MAX_CACHE_SITE = 60_000_000  # arquivos estáticos do site guardados em memória
 # Configuração e código de pareamento guardados ao lado do conector (nunca senha).
 ARQUIVO_CONFIG = Path(__file__).resolve().with_name("conector_rm_config.json")
 
@@ -85,15 +100,25 @@ class Config:
     bases: dict = field(default_factory=dict)
     # Procura o RM instalado nesta máquina para mostrar o alias de cada base.
     detectar_local: bool = True
+    # Site servido pelo conector (vazio = não serve páginas, só a API do conector).
+    site: str = ""
+    # Onde guardar as bases adicionadas pela tela (None = conector_rm_config.json).
+    arquivo_config: Path | None = None
+    trava: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def lista_bases(self) -> dict:
-        return dict(self.bases) if self.bases else {"principal": self.rm}
+        if self.bases:
+            return dict(self.bases)
+        return {"principal": self.rm} if self.rm else {}
 
     def url_da_base(self, nome: str | None) -> str:
         """Endereço da base pelo nome (vazio = padrão). Só bases abertas no conector."""
-        if not nome:
-            return self.rm
         bases = self.lista_bases()
+        if not bases:
+            raise ErroConector(400, "Nenhuma base do RM configurada.",
+                               "Adicione a base do cliente na tela (\"Adicionar base do RM\").")
+        if not nome:
+            return self.rm or next(iter(bases.values()))
         if nome not in bases:
             raise ErroConector(400, f"Base desconhecida: {nome}.",
                                "Use uma das bases abertas no conector: " + ", ".join(bases) + ".")
@@ -254,11 +279,11 @@ def traduzir_erro_rede(exc: BaseException, cfg: Config) -> ErroConector:
                             "Confira VPN/rede e se o serviço do RM (Host/REST) está no ar. Para lotes grandes, aumente --timeout.")
     if isinstance(motivo, socket.gaierror):
         return ErroConector(502, "Não encontrei o endereço do RM.",
-                            "Confira o nome do servidor em --rm e se a VPN do cliente está conectada.")
+                            "Confira o nome do servidor no endereço da base e se a VPN do cliente está conectada.")
     if isinstance(motivo, ConnectionRefusedError) or "refused" in str(motivo).lower():
         return ErroConector(502, "O RM recusou a conexão.",
-                            "Confira a porta em --rm (a do REST/Host do RM) e se o serviço está no ar.")
-    return ErroConector(502, f"Não consegui falar com o RM: {motivo}", "Confira o endereço em --rm, a VPN e o firewall.")
+                            "Confira a porta no endereço da base (a HTTPPort do RM.Host, padrão 8051) e se o serviço do RM está no ar.")
+    return ErroConector(502, f"Não consegui falar com o RM: {motivo}", "Confira o endereço da base, a VPN e o firewall.")
 
 
 DICAS_HTTP = {
@@ -406,6 +431,122 @@ def enviar_lote(cfg: Config, metodo: str, caminho: str, registros: list, usuario
             "pulados": sum(1 for r in resultados if r.get("acao") == "pulado"), "resultados": resultados}
 
 
+# --- Teste de uma base (sem senha) ---------------------------------------------
+
+
+_cache_testes: dict = {}
+
+
+def testar_base(cfg: Config, url: str, usar_cache: bool = True) -> dict:
+    """
+    O RM responde nesse endereço? GET sem senha no REST: 401 (pede login) =
+    REST do RM no ar. Não envia credencial nenhuma. Guarda o resultado por 20 s.
+    """
+    agora = time.monotonic()
+    if usar_cache and url in _cache_testes and agora - _cache_testes[url][0] < 20:
+        return _cache_testes[url][1]
+    req = urllib.request.Request(url + ROTA_TESTE_RM, headers={"Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=min(5.0, cfg.timeout), context=_contexto_ssl(cfg, url)) as r:
+            status = r.status
+    except urllib.error.HTTPError as e:
+        status = e.code
+    except (urllib.error.URLError, OSError) as e:
+        erro = traduzir_erro_rede(e, cfg)
+        resultado = {"responde": False, "http": None, "rest": False, "mensagem": erro.mensagem,
+                     "como_corrigir": erro.como_corrigir}
+        _cache_testes[url] = (agora, resultado)
+        return resultado
+    if status in (200, 401, 403):
+        resultado = {"responde": True, "http": status, "rest": True, "mensagem": "REST do RM respondendo.",
+                     "como_corrigir": ""}
+    elif status == 404:
+        resultado = {"responde": True, "http": status, "rest": False,
+                     "mensagem": "Algo respondeu nesse endereço, mas não é o REST do RM.",
+                     "como_corrigir": "Confira a porta: é a HTTPPort do RM.Host.Service.exe.config (padrão 8051)."}
+    else:
+        resultado = {"responde": True, "http": status, "rest": False,
+                     "mensagem": f"O RM respondeu com erro (HTTP {status}).",
+                     "como_corrigir": "Confira se o serviço do RM (RM.Host) está funcionando."}
+    _cache_testes[url] = (agora, resultado)
+    return resultado
+
+
+def testar_bases(cfg: Config, bases: dict) -> dict:
+    """Testa várias bases ao mesmo tempo (uma base fora do ar não atrasa as outras)."""
+    if not bases:
+        return {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(bases))) as ex:
+        futuros = {nome: ex.submit(testar_base, cfg, url) for nome, url in bases.items()}
+        return {nome: f.result() for nome, f in futuros.items()}
+
+
+def guardar_bases(cfg: Config) -> None:
+    """Guarda as bases atuais na configuração (as que a tela adicionou valem na próxima abertura)."""
+    dados = ler_config(cfg.arquivo_config)
+    dados["bases"] = [f"{n}={u}" for n, u in cfg.lista_bases().items()]
+    salvar_config(dados, cfg.arquivo_config)
+
+
+# --- Site servido pelo conector ---------------------------------------------------
+
+CABECALHOS_IDA = ("Accept", "Accept-Language", "Content-Type", "RSC", "Next-Router-State-Tree",
+                  "Next-Router-Prefetch", "Next-Router-Segment-Prefetch", "Next-Url", "Next-Action",
+                  "If-None-Match")
+CABECALHOS_VOLTA = ("Content-Type", "Cache-Control", "Content-Disposition", "Location", "Vary", "ETag",
+                    "Link", "X-Nextjs-Cache", "X-Nextjs-Prerender", "X-Nextjs-Stale-Time", "X-Nextjs-Postponed")
+
+
+class _SemRedirecionar(urllib.request.HTTPRedirectHandler):
+    """Redirecionamento do site volta para o navegador (que segue pelo conector)."""
+
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+_cache_site: dict = {}
+_tamanho_cache_site = [0]
+
+
+def buscar_no_site(cfg: Config, metodo: str, caminho: str, cabecalhos: dict, corpo: bytes | None) -> tuple:
+    """(status, cabeçalhos, corpo) da página `caminho` do site oficial. Só esse site; nunca outro host."""
+    estatico = metodo == "GET" and caminho.startswith("/_next/static/")
+    if estatico and caminho in _cache_site:
+        return _cache_site[caminho]
+    ida = {k: v for k, v in cabecalhos.items() if k.lower() in {c.lower() for c in CABECALHOS_IDA}}
+    ida.update({"Accept-Encoding": "identity", "User-Agent": f"ConectorRM/{VERSAO}"})
+    req = urllib.request.Request(cfg.site + caminho, data=corpo if metodo == "POST" else None,
+                                 method=metodo, headers=ida)
+    abridor = urllib.request.build_opener(_SemRedirecionar, urllib.request.HTTPSHandler(context=ssl.create_default_context()))
+    try:
+        resp = abridor.open(req, timeout=60)
+    except urllib.error.HTTPError as e:
+        resp = e
+    status = getattr(resp, "status", None) or resp.code
+    dados = resp.read()
+    volta = {}
+    for nome in CABECALHOS_VOLTA:
+        valor = resp.headers.get(nome)
+        if valor:
+            if nome == "Location" and valor.startswith(cfg.site):
+                valor = valor[len(cfg.site):] or "/"
+            volta[nome] = valor
+    resultado = (status, volta, dados)
+    if estatico and status == 200 and _tamanho_cache_site[0] + len(dados) <= MAX_CACHE_SITE:
+        _cache_site[caminho] = resultado
+        _tamanho_cache_site[0] += len(dados)
+    return resultado
+
+
+PAGINA_SEM_SITE = """<!doctype html><meta charset="utf-8"><title>Conector RM</title>
+<body style="font-family:sans-serif;max-width:640px;margin:48px auto;line-height:1.5">
+<h1>Conector RM {versao} está funcionando</h1>
+<p>Mas não consegui buscar as páginas do Acelerador em <b>{site}</b>.</p>
+<p>{motivo}</p>
+<p>Confira a internet deste computador e recarregue esta página. Enquanto isso, dá para usar o site
+direto ({site}) com este conector.</p></body>"""
+
+
 # --- Servidor local -----------------------------------------------------------
 
 
@@ -424,8 +565,28 @@ def criar_servidor(cfg: Config, porta: int = PORTA_PADRAO) -> ThreadingHTTPServe
         def log_message(self, *args):  # silencia o log padrão (teria caminho/cliente)
             pass
 
+        def _porta(self) -> int:
+            return self.server.server_address[1]
+
+        def _proprias_origens(self) -> tuple[str, ...]:
+            return (f"http://127.0.0.1:{self._porta()}", f"http://localhost:{self._porta()}")
+
+        def _host_valido(self) -> bool:
+            """Só atende por 127.0.0.1/localhost: um site que aponte o próprio nome para 127.0.0.1 é barrado."""
+            host = (self.headers.get("Host") or "").lower()
+            return host in (f"127.0.0.1:{self._porta()}", f"localhost:{self._porta()}")
+
+        def _mesma_origem(self) -> bool:
+            """Pedido feito pela própria página servida pelo conector."""
+            origem = self.headers.get("Origin")
+            if origem:
+                return origem.rstrip("/").lower() in self._proprias_origens()
+            return (self.headers.get("Sec-Fetch-Site") or "").lower() == "same-origin"
+
         def _origem_permitida(self) -> str | None:
             origem = self.headers.get("Origin")
+            if origem and origem.rstrip("/").lower() in self._proprias_origens():
+                return origem
             if origem_autorizada(origem, cfg.origens):
                 return origem
             if origem and origem not in origens_avisadas:  # avisa na janela uma vez por site
@@ -472,7 +633,7 @@ def criar_servidor(cfg: Config, porta: int = PORTA_PADRAO) -> ThreadingHTTPServe
             return True
 
         def do_OPTIONS(self):  # noqa: N802 (nome exigido pelo http.server)
-            self.send_response(204 if self._origem_permitida() else 403)
+            self.send_response(204 if self._host_valido() and self._origem_permitida() else 403)
             self._cors()
             self.send_header("Content-Length", "0")
             self.end_headers()
@@ -496,25 +657,110 @@ def criar_servidor(cfg: Config, porta: int = PORTA_PADRAO) -> ThreadingHTTPServe
             self.end_headers()
             self.wfile.write(corpo)
 
-        def do_GET(self):  # noqa: N802
-            rota = self.path.split("?")[0]
-            if rota == "/ping":
-                return self._ping()
-            if rota != "/status":
+        def _site(self, metodo: str) -> None:
+            """Entrega a página do site oficial (o conector serve o Acelerador)."""
+            if not cfg.site:
                 return self._responder(404, {"ok": False, "erro": "Rota inexistente."})
-            if not self._checar_acesso():
+            corpo = None
+            if metodo == "POST":
+                try:
+                    tamanho = int(self.headers.get("Content-Length") or 0)
+                except ValueError:
+                    tamanho = -1
+                if tamanho < 0 or tamanho > MAX_CORPO_SITE:
+                    return self._responder(413, ErroConector(413, "Arquivo grande demais.").para_dict())
+                corpo = self.rfile.read(tamanho)
+            try:
+                status, cabecalhos, dados = buscar_no_site(cfg, metodo, self.path, dict(self.headers), corpo)
+            except (urllib.error.URLError, OSError) as e:
+                motivo = traduzir_erro_rede(e, cfg).mensagem if not isinstance(e, ssl.SSLError) else str(e)
+                pagina = PAGINA_SEM_SITE.format(versao=VERSAO, site=cfg.site, motivo=motivo).encode("utf-8")
+                self.send_response(502)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(pagina)))
+                self.end_headers()
+                self.wfile.write(pagina)
                 return
+            self.send_response(status)
+            for nome, valor in cabecalhos.items():
+                self.send_header(nome, valor)
+            self.send_header("Content-Length", str(len(dados)))
+            self.end_headers()
+            self.wfile.write(dados)
+
+        def _pareamento(self) -> None:
+            """Código de pareamento para a página servida pelo próprio conector (nenhum outro site lê)."""
+            if not self._mesma_origem():
+                return self._responder(403, ErroConector(403, "Só a página aberta pelo conector recebe o código.").para_dict())
+            self._responder(200, {"ok": True, "token": cfg.token, "porta": self._porta(), "versao": VERSAO})
+
+        def _status(self) -> None:
             rm_local = detectar_rm_local() if cfg.detectar_local else []
-            bases = [{"nome": n, "rm": u, "alias": alias_da_base(u, rm_local)} for n, u in cfg.lista_bases().items()]
+            atuais = cfg.lista_bases()
+            testes = testar_bases(cfg, atuais)
+            bases = [{"nome": n, "rm": u, "alias": alias_da_base(u, rm_local), "teste": testes.get(n)}
+                     for n, u in atuais.items()]
             self._responder(200, {"ok": True, "conector": True, "versao": VERSAO, "rm": cfg.rm,
                                   "bases": bases, "aceita_autoassinado": cfg.aceitar_autoassinado,
+                                  "serve_site": bool(cfg.site),
                                   "rm_local": [{k: r[k] for k in ("endereco", "alias", "instalacao", "servico", "no_ar")}
                                                for r in rm_local]})
 
-        def do_POST(self):  # noqa: N802
+        def _adicionar_base(self, pedido: dict) -> dict:
+            nome = str(pedido.get("nome") or "").strip().lower()
+            endereco = str(pedido.get("endereco") or "").strip()
+            try:
+                nova = ler_bases([f"{nome}={endereco}" if nome else endereco])
+            except ValueError as e:
+                raise ErroConector(400, str(e), "Ex.: nome cliente-hml e endereço https://rm.cliente.com.br:8051.")
+            nome, url = next(iter(nova.items()))
+            if nome in cfg.lista_bases() and not pedido.get("substituir"):
+                raise ErroConector(400, f"Já existe uma base chamada {nome}.", "Use outro nome ou remova a antiga.")
+            teste = testar_base(cfg, url, usar_cache=False)
+            if not teste["responde"] and not pedido.get("forcar"):
+                raise ErroConector(400, f"O RM não respondeu em {url}: {teste['mensagem']}", teste["como_corrigir"])
+            with cfg.trava:
+                if not cfg.bases and cfg.rm:
+                    cfg.bases = {"principal": cfg.rm}
+                cfg.bases[nome] = url
+                cfg.rm = cfg.rm or url
+                guardar_bases(cfg)
+            _log(cfg, f"base adicionada pela tela: {nome} = {url} ({teste['mensagem']})")
+            return {"ok": True, "base": {"nome": nome, "rm": url, "teste": teste}}
+
+        def _remover_base(self, pedido: dict) -> dict:
+            nome = str(pedido.get("nome") or "").strip()
+            with cfg.trava:
+                atuais = cfg.lista_bases()
+                if nome not in atuais:
+                    raise ErroConector(400, f"Base desconhecida: {nome}.")
+                atuais.pop(nome)
+                cfg.bases = atuais
+                cfg.rm = next(iter(atuais.values()), "")
+                guardar_bases(cfg)
+            _log(cfg, f"base removida pela tela: {nome}")
+            return {"ok": True}
+
+        def do_GET(self):  # noqa: N802
+            if not self._host_valido():
+                return self._responder(403, ErroConector(403, "Use http://127.0.0.1 para abrir o conector.").para_dict())
             rota = self.path.split("?")[0]
-            if rota not in ("/rm", "/rm/lote"):
-                return self._responder(404, {"ok": False, "erro": "Rota inexistente."})
+            if rota == "/ping":
+                return self._ping()
+            if rota == "/conector/pareamento":
+                return self._pareamento()
+            if rota != "/status":
+                return self._site("GET")
+            if not self._checar_acesso():
+                return
+            self._status()
+
+        def do_POST(self):  # noqa: N802
+            if not self._host_valido():
+                return self._responder(403, ErroConector(403, "Use http://127.0.0.1 para abrir o conector.").para_dict())
+            rota = self.path.split("?")[0]
+            if rota not in ("/rm", "/rm/lote", "/conector/bases", "/conector/bases/remover"):
+                return self._site("POST")
             if not self._checar_acesso():
                 return
             try:
@@ -530,7 +776,11 @@ def criar_servidor(cfg: Config, porta: int = PORTA_PADRAO) -> ThreadingHTTPServe
             except ValueError:
                 return self._responder(400, ErroConector(400, "Corpo da chamada não é JSON válido.").para_dict())
             try:
-                if rota == "/rm":
+                if rota == "/conector/bases":
+                    r = self._adicionar_base(pedido)
+                elif rota == "/conector/bases/remover":
+                    r = self._remover_base(pedido)
+                elif rota == "/rm":
                     r = chamar_rm(cfg, pedido.get("metodo"), pedido.get("caminho"), pedido.get("usuario"),
                                   pedido.get("senha"), pedido.get("corpo"), pedido.get("parametros"),
                                   pedido.get("base"))
@@ -698,74 +948,41 @@ def _perguntar(texto: str, padrao: str = "") -> str:
 
 def perguntar_argumentos(arquivo: Path | None = None, origens: list[str] | None = None) -> list[str]:
     """
-    Modo dois cliques: usa a configuração guardada ou pergunta e guarda.
-    `origens`: endereço(s) do site já informados (ex.: pelo atalho .bat) -- aí não pergunta o site.
+    Modo dois cliques. Sem bases guardadas: procura o RM deste computador e
+    pergunta só "Usar estas bases?". Bases de clientes entram pela tela.
+    `origens`: endereço(s) do site vindos do atalho .bat (compatibilidade).
     """
     dados = ler_config(arquivo)
     if origens:
         dados = {**dados, "origem": list(origens_autorizadas(origens))}
     bases = [b for b in dados.get("bases", []) if isinstance(b, str) and b.strip()]
     print(f"Conector RM {VERSAO}\n")
-    if bases:
-        print("Configuração guardada:")
-        for b in bases:
-            print(f"  Base: {b}")
-        print(f"  Site: {', '.join(dados.get('origem') or [SITE_PADRAO])}\n")
-        if _perguntar("Usar esta configuração? (S/n)", "S").lower().startswith("s"):
-            return _argumentos(dados)
-    locais = detectar_rm_local()
-    sugestao = sugerir_bases(locais)
-    if sugestao:
-        print("Encontrei o RM instalado neste computador:")
-        for b in sugestao:
-            nome, _, url = b.partition("=")
-            r = next(x for x in locais if x["endereco"] == url)
-            alias = r["alias"] or "padrão da instalação"
-            print(f"  {nome:<16} {url:<24} alias {alias}  (pasta {r['instalacao']})")
-        texto = "Usar estas bases?" if len(sugestao) > 1 else "Usar esta base?"
-        if _perguntar(f"{texto} (S/n)", "S").lower().startswith("s"):
-            bases = sugestao
-            dados = {**dados, "bases": bases, "origem": _origens_ou_pergunta(dados, origens), "autoassinado": False}
-            salvar_config(dados, arquivo)
-            print(f"\nConfiguração guardada em {(arquivo or ARQUIVO_CONFIG).name} (na próxima vez é só dar dois cliques).\n")
-            return _argumentos(dados)
-        print()
-    print("Endereço do RM (o do REST/Host, ex.: https://rm.cliente.com.br:8051).")
-    print("Para mais de uma base, use nome=endereço (ex.: homolog=https://rm-hml:8051).")
-    bases = []
-    while True:
-        b = _perguntar(f"Base {len(bases) + 1}" + (" (Enter para terminar)" if bases else ""))
-        if not b:
-            if bases:
-                break
-            continue
-        try:
-            ler_bases([b])
-        except ValueError as e:
-            print(f"  {e}")
-            continue
-        bases.append(b)
-    origem = _origens_ou_pergunta(dados, origens)
-    autoassinado = _perguntar("O RM usa certificado HTTPS próprio (autoassinado)? (s/N)", "N").lower().startswith("s")
-    dados = {**dados, "bases": bases, "origem": origem, "autoassinado": autoassinado}
-    salvar_config(dados, arquivo)
-    print(f"\nConfiguração guardada em {(arquivo or ARQUIVO_CONFIG).name} (na próxima vez é só dar dois cliques).\n")
+    if not bases:
+        locais = detectar_rm_local()
+        sugestao = sugerir_bases(locais)
+        if sugestao:
+            print("Encontrei o RM instalado neste computador:")
+            for b in sugestao:
+                nome, _, url = b.partition("=")
+                r = next(x for x in locais if x["endereco"] == url)
+                alias = r["alias"] or "padrão da instalação"
+                print(f"  {nome:<16} {url:<24} alias {alias}  (pasta {r['instalacao']})")
+            texto = "Usar estas bases?" if len(sugestao) > 1 else "Usar esta base?"
+            if _perguntar(f"{texto} (S/n)", "S").lower().startswith("s"):
+                bases = sugestao
+            print()
+        if not bases:
+            print("Nenhuma base escolhida: adicione as bases do RM pela tela (\"Adicionar base do RM\").\n")
+        dados = {**dados, "bases": bases}
+        salvar_config(dados, arquivo)
     return _argumentos(dados)
-
-
-def _origens_ou_pergunta(dados: dict, origens: list[str] | None) -> list[str]:
-    if origens:
-        return list(origens_autorizadas(origens))
-    origem = so_origem(_perguntar("Endereço do site do Acelerador (pode colar o link da página)",
-                                  (dados.get("origem") or [SITE_PADRAO])[0]))
-    return origens_do_site(origem)
 
 
 def _argumentos(dados: dict) -> list[str]:
     argv: list[str] = []
     for b in dados.get("bases", []):
         argv += ["--rm", b]
-    for o in dados.get("origem") or [SITE_PADRAO]:
+    for o in dados.get("origem") or []:
         argv += ["--origem", o]
     if dados.get("porta"):
         argv += ["--porta", str(dados["porta"])]
@@ -776,7 +993,7 @@ def _argumentos(dados: dict) -> list[str]:
 
 def main(argv: list[str] | None = None, arquivo_config: Path | None = None) -> int:
     ap = argparse.ArgumentParser(description="Conector local entre o Acelerador e o RM.")
-    ap.add_argument("--rm", required=True, action="append",
+    ap.add_argument("--rm", action="append", default=[],
                     help="Endereço do RM, ex.: https://rm.cliente.com.br:8051. Para várias bases, repita com "
                          "nome=endereço: --rm homolog=https://rm-hml:8051 --rm producao=https://rm:8051")
     ap.add_argument("--origem", action="append", default=[],
@@ -786,17 +1003,25 @@ def main(argv: list[str] | None = None, arquivo_config: Path | None = None) -> i
     ap.add_argument("--aceitar-certificado-autoassinado", action="store_true",
                     help="Aceita HTTPS com certificado próprio do cliente (não verifica o certificado).")
     ap.add_argument("--novo-codigo", action="store_true", help="Gera um código de pareamento novo.")
+    ap.add_argument("--site", default=SITE_PADRAO,
+                    help="Site do Acelerador que o conector serve em http://127.0.0.1:<porta> (vazio = não serve).")
+    ap.add_argument("--sem-navegador", action="store_true", help="Não abre o navegador ao iniciar.")
     a = ap.parse_args(argv)
 
     try:
         bases = ler_bases(a.rm)
+        # Bases adicionadas pela tela (guardadas) valem também quando o conector abre por comando.
+        guardadas = [b for b in ler_config(arquivo_config).get("bases", []) if isinstance(b, str)]
+        for nome, url in (ler_bases(guardadas) if guardadas and a.rm else {}).items():
+            bases.setdefault(nome, url)
+        site = so_origem(a.site) if a.site else ""
     except ValueError as e:
         print(f"Erro: {e}", file=sys.stderr)
         return 2
-    origens = origens_autorizadas(a.origem) or ("http://localhost:3000",)
-    cfg = Config(rm=next(iter(bases.values())), token=codigo_de_pareamento(a.novo_codigo, arquivo_config),
+    origens = origens_autorizadas(list(a.origem) + ([site] if site else [])) or ("http://localhost:3000",)
+    cfg = Config(rm=next(iter(bases.values()), ""), token=codigo_de_pareamento(a.novo_codigo, arquivo_config),
                  origens=origens, aceitar_autoassinado=a.aceitar_certificado_autoassinado, timeout=a.timeout,
-                 bases=bases)
+                 bases=bases, site=site, arquivo_config=arquivo_config)
     try:
         servidor = criar_servidor(cfg, a.porta)
     except OSError:
@@ -804,11 +1029,19 @@ def main(argv: list[str] | None = None, arquivo_config: Path | None = None) -> i
               "Feche a outra janela ou use --porta com outro número.", file=sys.stderr)
         return 2
 
+    endereco_local = f"http://127.0.0.1:{a.porta}"
     print(f"Conector RM {VERSAO}")
     for nome, url in cfg.lista_bases().items():
-        print(f"  Base:    {nome} = {url}")
-    print(f"  Site:    {', '.join(cfg.origens)}")
+        print(f"  Base:    {nome} = {url}   -> {testar_base(cfg, url)['mensagem']}")
+    if not cfg.lista_bases():
+        print("  Base:    nenhuma ainda -- adicione pela tela (\"Adicionar base do RM\").")
     print(f"  Porta:   {a.porta} (só esta máquina)")
+    if cfg.site:
+        print()
+        print("  " + "=" * 60)
+        print(f"   ABRA O ACELERADOR POR AQUI:   {endereco_local}")
+        print("  " + "=" * 60)
+        print("   (já conectado: sem código, sem porta e sem bloqueio do navegador)")
     if cfg.aceitar_autoassinado:
         print("  AVISO:   certificado HTTPS do RM NÃO será verificado (--aceitar-certificado-autoassinado).")
     copiado = copiar_para_area_de_transferencia(cfg.token)
@@ -821,6 +1054,10 @@ def main(argv: list[str] | None = None, arquivo_config: Path | None = None) -> i
     print("  O código fica guardado e não muda a cada abertura.")
     print()
     print("Deixe esta janela aberta. Senhas não são gravadas nem exibidas. Ctrl+C para encerrar.")
+    if cfg.site and not a.sem_navegador:
+        import webbrowser
+
+        threading.Timer(0.8, webbrowser.open, args=(endereco_local + "/",)).start()
     try:
         servidor.serve_forever()
     except KeyboardInterrupt:

@@ -60,7 +60,8 @@ que ainda falta validar. Atualizado em 19/11/2026. Os hashes entre parênteses s
 | **Hub MIT 41**: Interpretador + Análise numa tela, PDF lido uma vez | `7575f2f` |
 | Conector 1.2: abre com dois cliques (pergunta e guarda a configuração), atalho `.bat`, código de pareamento fixo e copiado | `8a226fc` |
 | Conector 1.3: aceita os deploys da Vercel (`acelerador-*-equipe`), `/ping` e diagnóstico na tela | `b09db7c` |
-| Conector 1.3.1/1.4: endereço do site sem o caminho da página; `.bat` abre o conector mais novo da pasta; **detecta o RM instalado** (porta e alias) e sugere as bases | (este commit: ver git log) |
+| Conector 1.3.1/1.4: endereço do site sem o caminho da página; `.bat` abre o conector mais novo da pasta; **detecta o RM instalado** (porta e alias) e sugere as bases | `059e36d` |
+| **Conector 2.0: serve o Acelerador em `http://127.0.0.1:8765`** (conecta sozinho, sem bloqueio de rede local do navegador), bases do RM adicionadas e testadas pela tela, teste de cada base sem senha, proteção contra DNS rebinding | (este commit: ver git log) |
 
 ## 2. Decisões
 
@@ -80,6 +81,8 @@ que ainda falta validar. Atualizado em 19/11/2026. Os hashes entre parênteses s
 | 25/11 | JSON de saída no formato do GET, mas o **envio** leva um registro por chamada, sem `id`, sem `null`, sem credenciais | POST com o envelope do GET deu erro 0007 (restrição); num PUT, `null` apaga o valor no RM | Enviar o JSON do GET como está |
 | 25/11 | Antes de um POST, consultar a chave e pular (padrão) ou alterar o que já existe | Evita o 0007 de "já existe" (ex.: `mestre`) | Deixar o RM recusar |
 | 25/11 | Várias bases num conector só, por nome (`--rm nome=endereço`) | Puxar de uma base e enviar para outra sem trocar de conector; continua sem ser proxy aberto | Um conector por base |
+| 25/11 | O conector serve o próprio Acelerador (proxy só do site oficial) | O navegador bloqueia/pede permissão para um site HTTPS chamar 127.0.0.1 (e a política da empresa pode negar); página e conector no mesmo endereço eliminam o problema e o código de pareamento | Continuar dependendo da permissão de "rede local" |
+| 25/11 | Bases do RM adicionadas pela tela, testadas antes de guardar | Apontar para qualquer base de cliente sem reabrir o conector nem montar comando | Bases só por argumento `--rm` |
 | 25/11 | Código de pareamento guardado ao lado do conector (não muda a cada abertura) | Analistas não conseguiam ler o código (janela fechava); a proteção principal continua sendo a origem do site + só 127.0.0.1 | Código novo a cada abertura |
 | 25/11 | Nome do DataServer de eventos contábeis editável e lembrado no navegador | Não estava confirmado; a tela serve para qualquer DataServer | Fixar um nome deduzido |
 

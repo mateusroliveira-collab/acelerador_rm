@@ -3,9 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   PORTA_PADRAO,
+  ENDERECO_LOCAL,
   StatusConector,
   atalhoWindows,
   comandoConector,
+  detectarConectorLocal,
   lerConexaoSalva,
   mensagemConectorInacessivel,
   pingConector,
@@ -122,6 +124,11 @@ export function PostmanRm({
   const [status, setStatus] = useState<StatusConector | null>(null);
   const [conectando, setConectando] = useState(false);
   const [avisoConexao, setAvisoConexao] = useState<string | null>(null);
+  // Página aberta pelo próprio conector (2.0+): conecta sozinha.
+  const [modoLocal, setModoLocal] = useState(false);
+  const [novaBaseNome, setNovaBaseNome] = useState("");
+  const [novaBaseEndereco, setNovaBaseEndereco] = useState("");
+  const [salvandoBase, setSalvandoBase] = useState(false);
   const [comoAbrir, setComoAbrir] = useState(false);
   const [basesTexto, setBasesTexto] = useState("");
   const [autoassinado, setAutoassinado] = useState(false);
@@ -167,6 +174,13 @@ export function PostmanRm({
       setPorta(salva.porta);
       setToken(salva.token);
     }
+    detectarConectorLocal().then((local) => {
+      if (!local) return;
+      setModoLocal(true);
+      setPorta(local.porta);
+      setToken(local.token);
+      conectar(local.porta, local.token);
+    });
     if (lembrarComo) {
       try {
         const v = JSON.parse(localStorage.getItem(`postman_rm:${lembrarComo}`) || "null");
@@ -215,6 +229,8 @@ export function PostmanRm({
   }, [registros.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const variasBases = (status?.bases?.length ?? 0) > 1;
+  // Conector 2.0+: bases adicionadas/removidas pela tela.
+  const suportaBases = !!status && versaoAtende(status.versao, "2.0.0");
   // Instalações do RM nesta máquina (no ar) que não estão entre as bases abertas no conector.
   const outrasInstalacoes = (status?.rm_local ?? []).filter(
     (r, i, todos) =>
@@ -256,35 +272,37 @@ export function PostmanRm({
     }
   }
 
-  async function conectar() {
+  async function conectar(portaUsar: string = porta, tokenUsar: string = token) {
     setConectando(true);
     setErro(null);
     setAvisoConexao(null);
-    setStatus(null);
     try {
-      let portaUsada = porta;
+      let portaUsada = portaUsar;
       let r: Response;
       try {
-        r = await fetch(`${urlConector(porta)}/status`, { headers: { "X-Conector-Token": token.trim() } });
+        r = await fetch(`${urlConector(portaUsar)}/status`, { headers: { "X-Conector-Token": tokenUsar.trim() } });
       } catch (e) {
         // Erro comum: a porta do RM (ex.: 8051) no lugar da do conector. Tenta a padrão.
-        if (porta === PORTA_PADRAO) throw e;
-        r = await fetch(`${urlConector(PORTA_PADRAO)}/status`, { headers: { "X-Conector-Token": token.trim() } });
+        if (portaUsar === PORTA_PADRAO) throw e;
+        r = await fetch(`${urlConector(PORTA_PADRAO)}/status`, { headers: { "X-Conector-Token": tokenUsar.trim() } });
         portaUsada = PORTA_PADRAO;
         setPorta(PORTA_PADRAO);
         setAvisoConexao(
-          `O conector não estava na porta ${porta}, e sim na ${PORTA_PADRAO} (a padrão): corrigi o campo. ` +
+          `O conector não estava na porta ${portaUsar}, e sim na ${PORTA_PADRAO} (a padrão): corrigi o campo. ` +
             "A porta do RM vai só no endereço das bases."
         );
       }
       const dados = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(`${dados.erro ?? "Conector recusou."} ${dados.como_corrigir ?? ""}`.trim());
-      const bases = Array.isArray(dados.bases) && dados.bases.length ? dados.bases : [{ nome: "", rm: dados.rm }];
+      // Conector antigo (sem "bases"): uma base só, a do --rm.
+      const bases = Array.isArray(dados.bases) ? dados.bases : dados.rm ? [{ nome: "", rm: dados.rm }] : [];
       setStatus({ versao: dados.versao, rm: dados.rm, bases, rm_local: Array.isArray(dados.rm_local) ? dados.rm_local : [] });
-      setBaseConsulta(bases[0].nome);
-      setBaseEnvio(bases[bases.length > 1 ? 1 : 0].nome);
-      salvarConexao({ porta: portaUsada, token: token.trim() });
+      const nomes = bases.map((b: { nome: string }) => b.nome);
+      setBaseConsulta((atual) => (nomes.includes(atual) ? atual : nomes[0] ?? ""));
+      setBaseEnvio((atual) => (nomes.includes(atual) ? atual : nomes[nomes.length > 1 ? 1 : 0] ?? ""));
+      salvarConexao({ porta: portaUsada, token: tokenUsar.trim() });
     } catch (e) {
+      setStatus(null);
       const msg = e instanceof Error ? e.message : "";
       if (msg && msg !== "Failed to fetch" && !msg.includes("NetworkError")) {
         tratarFalha(e);
@@ -293,6 +311,44 @@ export function PostmanRm({
       }
     } finally {
       setConectando(false);
+    }
+  }
+
+  /** Adiciona (e testa) uma base do RM no conector, pela tela. Fica guardada para as próximas vezes. */
+  async function adicionarBase() {
+    setSalvandoBase(true);
+    setErro(null);
+    try {
+      const r = await fetch(`${urlConector(porta)}/conector/bases`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Conector-Token": token.trim() },
+        body: JSON.stringify({ nome: novaBaseNome.trim(), endereco: novaBaseEndereco.trim() }),
+      });
+      const dados = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(`${dados.erro ?? "O conector recusou a base."} ${dados.como_corrigir ?? ""}`.trim());
+      setNovaBaseNome("");
+      setNovaBaseEndereco("");
+      await conectar();
+    } catch (e) {
+      tratarFalha(e);
+    } finally {
+      setSalvandoBase(false);
+    }
+  }
+
+  async function removerBase(nome: string) {
+    if (!window.confirm(`Remover a base "${nome}" do conector? (não mexe em nada no RM)`)) return;
+    try {
+      const r = await fetch(`${urlConector(porta)}/conector/bases/remover`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Conector-Token": token.trim() },
+        body: JSON.stringify({ nome }),
+      });
+      const dados = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(dados.erro ?? "Não foi possível remover.");
+      await conectar();
+    } catch (e) {
+      tratarFalha(e);
     }
   }
 
@@ -517,7 +573,28 @@ export function PostmanRm({
   return (
     <div className="rounded-lg border border-brand/40 bg-surface p-4">
       {/* --- Conexão ---------------------------------------------------- */}
+      {!modoLocal && !status && (
+        <p className="mb-3 rounded-md border border-brand/40 bg-paper px-3 py-2 text-xs text-ink">
+          <strong>Jeito mais fácil:</strong> baixe o{" "}
+          <a href="/conector/conector_rm.py" download className="underline">
+            conector_rm.py
+          </a>{" "}
+          e dê dois cliques. Ele abre o Acelerador em <code>{ENDERECO_LOCAL}</code> <strong>já conectado</strong>: sem
+          código, sem porta e sem bloqueio do navegador. As bases do RM você adiciona aqui mesmo.
+        </p>
+      )}
       <div className="flex flex-wrap items-end gap-3">
+        {modoLocal ? (
+          <p className="text-xs text-ink">
+            <strong>Aberto pelo conector</strong> (conecta sozinho).
+            {!status && !conectando && (
+              <button onClick={() => conectar()} className={`${botaoSec} ml-2`}>
+                Tentar de novo
+              </button>
+            )}
+          </p>
+        ) : (
+        <>
         <label className="flex flex-col gap-1">
           <span className={rotulo} title="A porta do conector na sua máquina (linha 'Porta:' da janela). Não é a porta do RM.">
             Porta do conector
@@ -540,12 +617,14 @@ export function PostmanRm({
           />
         </label>
         <button
-          onClick={conectar}
+          onClick={() => conectar()}
           disabled={!token.trim() || !porta || conectando}
           className="rounded-md bg-action px-4 py-2 text-sm font-medium text-white transition hover:bg-action-hover disabled:opacity-50"
         >
           {conectando ? "Conectando..." : status ? "Reconectar" : "Conectar"}
         </button>
+        </>
+        )}
         <label className="flex flex-col gap-1">
           <span className={rotulo}>Usuário do RM</span>
           <input value={usuario} onChange={(e) => setUsuario(e.target.value)} autoComplete="off" className={`${campo} w-36`} />
@@ -560,17 +639,79 @@ export function PostmanRm({
             className={`${campo} w-36`}
           />
         </label>
-        <button onClick={() => setComoAbrir((v) => !v)} className={`${botaoSec} ml-auto`}>
-          {comoAbrir ? "Fechar ajuda" : "Como abrir o conector"}
-        </button>
+        {!modoLocal && (
+          <button onClick={() => setComoAbrir((v) => !v)} className={`${botaoSec} ml-auto`}>
+            {comoAbrir ? "Fechar ajuda" : "Como abrir o conector"}
+          </button>
+        )}
       </div>
       {status && (
-        <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">
-          ✓ Conectado (conector {status.versao}) · base{status.bases.length > 1 ? "s" : ""}:{" "}
-          {status.bases
-            .map((b) => `${b.nome ? `${b.nome} = ` : ""}${b.rm}${b.alias ? ` (alias ${b.alias})` : ""}`)
-            .join(" · ")}
-        </p>
+        <div className="mt-3 rounded-md border border-line bg-paper p-3 text-xs">
+          <p className="text-emerald-700 dark:text-emerald-300">✓ Conectado ao conector {status.versao}</p>
+          {status.bases.length === 0 && (
+            <p className="mt-1 text-amber-800 dark:text-amber-300">Nenhuma base do RM ainda: adicione abaixo.</p>
+          )}
+          {status.bases.length > 0 && (
+            <ul className="mt-2 space-y-1">
+              {status.bases.map((b) => (
+                <li key={b.nome || b.rm} className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={`inline-block h-2 w-2 rounded-full ${
+                      !b.teste ? "bg-line" : b.teste.rest ? "bg-emerald-500" : "bg-red-500"
+                    }`}
+                  />
+                  <span className="font-mono font-bold text-ink">{b.nome || "base"}</span>
+                  <span className="font-mono text-muted">{b.rm}</span>
+                  {b.alias && <span className="text-muted">· alias {b.alias}</span>}
+                  {b.teste && (
+                    <span className={b.teste.rest ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300"}>
+                      · {b.teste.mensagem}
+                      {!b.teste.rest && b.teste.como_corrigir && ` ${b.teste.como_corrigir}`}
+                    </span>
+                  )}
+                  {suportaBases && b.nome && (
+                    <button onClick={() => removerBase(b.nome)} className="ml-auto text-muted underline">
+                      remover
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          {suportaBases && (
+            <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-line pt-3">
+              <label className="flex flex-col gap-1">
+                <span className={rotulo}>Nome da base</span>
+                <input
+                  value={novaBaseNome}
+                  onChange={(e) => setNovaBaseNome(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "-"))}
+                  placeholder="ex.: cliente-hml"
+                  className={`${campo} w-40 font-mono text-xs`}
+                />
+              </label>
+              <label className="flex min-w-[16rem] flex-1 flex-col gap-1">
+                <span className={rotulo}>Endereço do RM (servidor + porta do REST)</span>
+                <input
+                  value={novaBaseEndereco}
+                  onChange={(e) => setNovaBaseEndereco(e.target.value)}
+                  placeholder="ex.: https://rm.cliente.com.br:8051 ou http://localhost:8051"
+                  className={`${campo} font-mono text-xs`}
+                />
+              </label>
+              <button
+                onClick={adicionarBase}
+                disabled={!novaBaseNome.trim() || !novaBaseEndereco.trim() || salvandoBase}
+                className="rounded-md bg-action px-3 py-2 text-xs font-medium text-white transition hover:bg-action-hover disabled:opacity-50"
+              >
+                {salvandoBase ? "Testando..." : "Adicionar base do RM"}
+              </button>
+              <p className="basis-full text-muted">
+                O conector testa se o RM responde nesse endereço antes de guardar (sem enviar senha). Base de cliente
+                na VPN: conecte a VPN antes. A base fica guardada para as próximas vezes.
+              </p>
+            </div>
+          )}
+        </div>
       )}
       {status && outrasInstalacoes.length > 0 && (
         <p className="mt-1 text-xs text-muted">

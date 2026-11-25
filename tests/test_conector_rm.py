@@ -23,6 +23,7 @@ sys.modules["conector_rm"] = conector  # dataclass precisa achar o módulo
 _spec.loader.exec_module(conector)
 
 ORIGEM = "https://acelerador.exemplo.com"
+_porta_rm_falso = [0]  # porta do RM falso da fixture "ambiente"
 SENHA = "s3nh@-secreta"
 
 
@@ -67,6 +68,7 @@ def ambiente():
     rm = _subir(ThreadingHTTPServer(("127.0.0.1", 0), _RmFalso))
     cfg = conector.Config(rm=f"http://127.0.0.1:{rm.server_address[1]}", token="ABCD1234",
                           origens=(ORIGEM,), timeout=5, detectar_local=False)
+    _porta_rm_falso[0] = rm.server_address[1]
     srv = _subir(conector.criar_servidor(cfg, 0))
     yield cfg, f"http://127.0.0.1:{srv.server_address[1]}"
     srv.shutdown()
@@ -303,18 +305,18 @@ def test_codigo_de_pareamento_fica_guardado(tmp_path):
     assert "senha" not in arq.read_text(encoding="utf-8").lower()
 
 
-def test_dois_cliques_pergunta_guarda_e_reaproveita(tmp_path, monkeypatch):
+def test_dois_cliques_sem_rm_local_abre_sem_perguntar_nada(tmp_path, monkeypatch):
     arq = tmp_path / "cfg.json"
-    respostas = iter(["endereco-ruim", "homolog=https://rm-hml:8051", "producao=https://rm:8051", "",
-                      "", "s"])
-    monkeypatch.setattr("builtins.input", lambda _: next(respostas))
+    monkeypatch.setattr("builtins.input", lambda _: pytest.fail("não deveria perguntar nada"))
     monkeypatch.setattr(conector, "detectar_rm_local", lambda raizes=None: [])  # máquina sem RM
-    argv = conector.perguntar_argumentos(arq)
-    assert argv == ["--rm", "homolog=https://rm-hml:8051", "--rm", "producao=https://rm:8051",
-                    "--origem", conector.SITE_PADRAO, "--aceitar-certificado-autoassinado"]  # padrão: só o oficial
-    # segunda vez: só confirma (Enter)
-    monkeypatch.setattr("builtins.input", lambda _: "")
-    assert conector.perguntar_argumentos(arq) == argv
+    assert conector.perguntar_argumentos(arq) == []  # bases do cliente entram pela tela
+
+
+def test_dois_cliques_reaproveita_as_bases_guardadas(tmp_path, monkeypatch):
+    arq = tmp_path / "cfg.json"
+    conector.salvar_config({"bases": ["cliente-hml=https://rm-hml:8051"]}, arq)
+    monkeypatch.setattr("builtins.input", lambda _: pytest.fail("não deveria perguntar nada"))
+    assert conector.perguntar_argumentos(arq) == ["--rm", "cliente-hml=https://rm-hml:8051"]
 
 
 def test_dois_cliques_com_erro_segura_a_janela(monkeypatch):
@@ -441,8 +443,7 @@ def test_dois_cliques_sugere_o_rm_desta_maquina(tmp_path, monkeypatch):
     ])
     monkeypatch.setattr("builtins.input", lambda _: "")  # Enter em tudo
     argv = conector.perguntar_argumentos(arq)
-    assert argv[:4] == ["--rm", "base-fiepe=http://localhost:8061", "--rm", "corporerm=http://localhost:8051"]
-    assert conector.SITE_PADRAO in argv
+    assert argv == ["--rm", "base-fiepe=http://localhost:8061", "--rm", "corporerm=http://localhost:8051"]
     assert conector.ler_bases([argv[1], argv[3]]) == {"base-fiepe": "http://localhost:8061",
                                                      "corporerm": "http://localhost:8051"}
 
@@ -456,7 +457,9 @@ def test_status_mostra_alias_da_base_local(ambiente, monkeypatch):
         {"instalacao": "CorporeRM", "servico": "RM.Host.Service", "endereco": f"http://localhost:{porta}",
          "porta": porta, "alias": "CorporeRM", "no_ar": True}])
     _, _, r = _chamar(base, "/status")
-    assert r["bases"] == [{"nome": "local", "rm": f"http://localhost:{porta}", "alias": "CorporeRM"}]
+    assert [{k: b[k] for k in ("nome", "rm", "alias")} for b in r["bases"]] == [
+        {"nome": "local", "rm": f"http://localhost:{porta}", "alias": "CorporeRM"}]
+    assert r["bases"][0]["teste"]["responde"] is True
     assert r["rm_local"][0]["alias"] == "CorporeRM" and "porta" not in r["rm_local"][0]
 
 
@@ -476,3 +479,168 @@ def test_atalho_sem_bases_detecta_o_rm_e_usa_o_site_do_atalho(tmp_path, monkeypa
     assert site in argv and "https://acelerador-*-mateusroliveira-collab.vercel.app" in argv
     assert argv[-2:] == ["--porta", "8765"]
     assert not any("site" in p.lower() for p in perguntas)  # o site veio do atalho: não pergunta
+
+
+# --- 2.0: o conector serve o Acelerador, bases pela tela, teste da base --------------
+
+class _SiteFalso(BaseHTTPRequestHandler):
+    recebidos: list = []
+
+    def log_message(self, *a):
+        pass
+
+    def _tratar(self):
+        tamanho = int(self.headers.get("Content-Length") or 0)
+        corpo = self.rfile.read(tamanho) if tamanho else b""
+        _SiteFalso.recebidos.append({"metodo": self.command, "caminho": self.path, "corpo": corpo,
+                                     "rsc": self.headers.get("RSC"), "cookie": self.headers.get("Cookie")})
+        if self.path == "/conector-rm":
+            self.send_response(307)
+            self.send_header("Location", f"http://{self.headers['Host']}/evento-contabil-automatico")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        dados = (b"<html>Acelerador</html>" if self.path == "/" else
+                 json.dumps({"caminho": self.path, "recebi": corpo.decode()}).encode())
+        self.send_response(200 if self.path != "/nao-existe" else 404)
+        self.send_header("Content-Type", "text/html" if self.path == "/" else "application/json")
+        self.send_header("Set-Cookie", "rastreio=1")
+        self.send_header("Content-Length", str(len(dados)))
+        self.end_headers()
+        self.wfile.write(dados)
+
+    do_GET = do_POST = _tratar
+
+
+@pytest.fixture()
+def com_site(ambiente):
+    cfg, base = ambiente
+    _SiteFalso.recebidos = []
+    site = _subir(ThreadingHTTPServer(("127.0.0.1", 0), _SiteFalso))
+    cfg.site = f"http://127.0.0.1:{site.server_address[1]}"
+    yield cfg, base
+    site.shutdown()
+
+
+def _get(base, caminho, cabecalhos=None):
+    req = urllib.request.Request(base + caminho, headers=cabecalhos or {})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return r.status, dict(r.headers), r.read()
+    except urllib.error.HTTPError as e:
+        return e.code, dict(e.headers), e.read()
+
+
+def test_conector_serve_as_paginas_do_site(com_site):
+    _, base = com_site
+    status, cab, corpo = _get(base, "/", {"RSC": "1"})
+    assert status == 200 and corpo == b"<html>Acelerador</html>" and cab["Content-Type"] == "text/html"
+    assert "Set-Cookie" not in cab  # só cabeçalhos da lista
+    assert _SiteFalso.recebidos[-1]["rsc"] == "1"  # cabeçalho do Next repassado
+    assert _get(base, "/nao-existe")[0] == 404
+
+
+def test_post_da_tela_vai_para_a_api_do_site(com_site):
+    _, base = com_site
+    req = urllib.request.Request(base + "/api/v1/dataserver/glb-usuario/lote", data=b'{"x": 1}', method="POST",
+                                 headers={"Content-Type": "application/json", "Origin": base})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        assert json.loads(r.read()) == {"caminho": "/api/v1/dataserver/glb-usuario/lote", "recebi": '{"x": 1}'}
+
+
+def test_redirecionamento_do_site_fica_no_conector(com_site):
+    _, base = com_site
+    req = urllib.request.Request(base + "/conector-rm")
+    abridor = urllib.request.build_opener(type("SemSeguir", (urllib.request.HTTPRedirectHandler,),
+                                               {"redirect_request": lambda *a, **k: None}))
+    try:
+        abridor.open(req, timeout=10)
+        pytest.fail("esperava 307")
+    except urllib.error.HTTPError as e:
+        assert e.code == 307 and e.headers["Location"] == "/evento-contabil-automatico"
+
+
+def test_nome_de_host_estranho_e_barrado(com_site):
+    _, base = com_site
+    porta = base.rsplit(":", 1)[1]
+    assert _get(base, "/", {"Host": f"site-malicioso.com:{porta}"})[0] == 403
+    assert _get(base, "/status", {"Host": f"site-malicioso.com:{porta}", "X-Conector-Token": "ABCD1234"})[0] == 403
+    assert _get(base, "/", {"Host": f"localhost:{porta}"})[0] == 200
+
+
+def test_codigo_so_para_a_pagina_do_proprio_conector(com_site):
+    _, base = com_site
+    status, _, corpo = _get(base, "/conector/pareamento", {"Sec-Fetch-Site": "same-origin"})
+    assert status == 200 and json.loads(corpo)["token"] == "ABCD1234"
+    assert _get(base, "/conector/pareamento", {"Origin": base})[0] == 200
+    assert _get(base, "/conector/pareamento", {"Sec-Fetch-Site": "cross-site"})[0] == 403
+    assert _get(base, "/conector/pareamento", {"Origin": "https://acelerador-rm.vercel.app"})[0] == 403
+    assert _get(base, "/conector/pareamento")[0] == 403  # sem sinal de mesma origem
+
+
+def test_pagina_do_conector_pode_chamar_a_api_do_conector(com_site):
+    _, base = com_site
+    status, _, r = _chamar(base, "/status", origem=base)  # Origin = o próprio conector
+    assert status == 200 and r["serve_site"] is True
+
+
+def test_adicionar_testar_e_remover_base_pela_tela(ambiente, tmp_path):
+    cfg, base = ambiente
+    cfg.arquivo_config = tmp_path / "cfg.json"
+    cfg.bases, cfg.rm = {}, ""
+    porta_rm = _RmFalso_porta(cfg)
+    status, _, r = _chamar(base, "/conector/bases", {"nome": "Cliente-HML", "endereco": f"http://127.0.0.1:{porta_rm}/qualquer"})
+    assert status == 200 and r["base"]["nome"] == "cliente-hml" and r["base"]["teste"]["rest"] is True
+    assert conector.ler_config(cfg.arquivo_config)["bases"] == [f"cliente-hml=http://127.0.0.1:{porta_rm}"]
+    _, _, st = _chamar(base, "/status")
+    assert [b["nome"] for b in st["bases"]] == ["cliente-hml"]
+    # repetida, endereço inválido, RM fora do ar
+    assert _chamar(base, "/conector/bases", {"nome": "cliente-hml", "endereco": f"http://127.0.0.1:{porta_rm}"})[0] == 400
+    assert _chamar(base, "/conector/bases", {"nome": "x", "endereco": "ftp://nada"})[0] == 400
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        livre = s.getsockname()[1]
+    status, _, r = _chamar(base, "/conector/bases", {"nome": "fora", "endereco": f"http://127.0.0.1:{livre}"})
+    assert status == 400 and "não respondeu" in r["erro"] and r["como_corrigir"]
+    # remover
+    assert _chamar(base, "/conector/bases/remover", {"nome": "cliente-hml"})[0] == 200
+    assert conector.ler_config(cfg.arquivo_config)["bases"] == []
+    status, _, r = _chamar(base, "/rm", {"metodo": "GET", "caminho": "/rmsrestdataserver/rest/X", "usuario": "u", "senha": "s"})
+    assert status == 400 and "Nenhuma base" in r["erro"]
+
+
+def _RmFalso_porta(cfg):
+    return _porta_rm_falso[0]
+
+
+def test_adicionar_base_exige_codigo(ambiente):
+    _, base = ambiente
+    assert _chamar(base, "/conector/bases", {"nome": "x", "endereco": "http://127.0.0.1:1"}, token="ERRADO")[0] == 401
+
+
+def test_testar_base_interpreta_respostas_do_rm(ambiente):
+    cfg, _ = ambiente
+    r = conector.testar_base(cfg, cfg.rm, usar_cache=False)
+    assert r["responde"] and r["rest"] and r["http"] == 200
+    assert _RmFalso.recebidos[-1]["auth"] is None  # nunca manda credencial no teste
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        livre = s.getsockname()[1]
+    r = conector.testar_base(cfg, f"http://127.0.0.1:{livre}", usar_cache=False)
+    assert not r["responde"] and r["como_corrigir"]
+
+
+def test_main_sem_bases_e_aceito_e_bases_guardadas_entram(tmp_path, monkeypatch):
+    arq = tmp_path / "cfg.json"
+    conector.salvar_config({"bases": ["guardada=https://rm-cliente:8051"]}, arq)
+    criado = {}
+
+    def fake_servidor(cfg, porta):
+        criado["cfg"] = cfg
+        raise OSError("porta ocupada (para o teste parar aqui)")
+
+    monkeypatch.setattr(conector, "criar_servidor", fake_servidor)
+    assert conector.main(["--rm", "local=http://localhost:8051", "--sem-navegador"], arq) == 2
+    assert criado["cfg"].lista_bases() == {"local": "http://localhost:8051", "guardada": "https://rm-cliente:8051"}
+    assert criado["cfg"].site == conector.SITE_PADRAO
+    assert conector.main(["--sem-navegador", "--site", ""], arq) == 2  # sem --rm também abre
