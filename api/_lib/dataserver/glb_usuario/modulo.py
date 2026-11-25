@@ -6,13 +6,16 @@ dos campos) + tela "Usuário" do RM (quais campos são obrigatórios: os que
 aparecem em negrito -- Usuário, Código de Acesso, Login OIDC e Início de
 Validade).
 
-DE PROPÓSITO fora do payload:
+Formato: a planilha e o JSON seguem o retorno do GET -- nomes técnicos dos
+campos, na mesma ordem, booleanos como o RM grava (1/0 e T/F) e, no JSON,
+o envelope {"messages", "length", "data"} com todas as chaves do GET.
+
+DE PROPÓSITO fora da planilha e do envio (saem null no JSON):
  - SENHA (e qualquer credencial): a ferramenta nunca pede nem gera senha;
    no RM a senha de usuário novo fica desabilitada, e a primeira senha segue
    o fluxo de "Alterar senha no próximo login";
- - campos controlados pelo RM (último acesso, logins inválidos, histórico de
-   senhas, CONTROLE...), segredos (TOTPSECRETKEY, senhas de redes sociais)
-   e integrações (Fluig, USERID...).
+ - segredos (TOTPSECRETKEY, senhas de redes sociais, histórico de senhas);
+ - campos controlados pelo RM (último acesso, logins inválidos, CONTROLE...).
 """
 
 from ..base import BOOLEANO, DATA, EMAIL, INTEIRO, TEXTO, Campo, Modulo, valor_no_payload
@@ -20,32 +23,70 @@ from ..base import BOOLEANO, DATA, EMAIL, INTEIRO, TEXTO, Campo, Modulo, valor_n
 # Fuso usado nas datas (o RM devolve "-03:00"/"-02:00" conforme o horário de verão).
 FUSO_PADRAO = "-03:00"
 
+# Todas as chaves do GET de GlbUsuarioData, NA ORDEM em que o RM devolve.
+# O JSON de saída segue exatamente este formato.
+CAMPOS_GET = (
+    "id", "CODUSUARIO", "NOME", "CODACESSO", "STATUS", "DATAINICIO", "IGNORARAUTENTICACAOLDAP",
+    "DATAEXPIRACAO", "DATAULTIMOACESSO", "CODUSUARIOREDE", "DOMINIOREDE", "EMAIL", "NOMESOCIAL",
+    "DATAULTIMOACESSOVALIDO", "CODEXTERNO", "INTEGRADOFLUIG", "OIDC_ENABLED", "TOTPSECRETKEY",
+    "CONFIRMABTNOK", "SENHA", "CONTROLE", "ULTIMACOLIGADA", "DTAEXPSENHA", "DIASEXPSENHA",
+    "OBRIGAALTERARSENHA", "NUMLOGININVALIDO", "DATALOGININVALIDO", "ACESSONET", "LIVEID",
+    "USUARIOTWITTER", "SENHATWITTER", "USUARIOFACEBOOK", "SENHAFACEBOOK", "USUARIOLINKEDIN",
+    "SENHALINKEDIN", "FULLDETERMINED", "USERID", "USERIDFLUIGIDENTITY", "ULTIMASSENHAS",
+)
+
+# Chaves do GET que NUNCA são preenchidas pela ferramenta (saem null no JSON e
+# não vão no envio): credenciais/segredos e campos que o próprio RM controla.
+CREDENCIAIS = ("SENHA", "TOTPSECRETKEY", "SENHATWITTER", "SENHAFACEBOOK", "SENHALINKEDIN", "ULTIMASSENHAS")
+CONTROLADOS_PELO_RM = ("id", "DATAULTIMOACESSO", "DATAULTIMOACESSOVALIDO", "CONTROLE", "DTAEXPSENHA",
+                       "NUMLOGININVALIDO", "DATALOGININVALIDO")
+
+_INFERIDO = "Tipo inferido (o exemplo do RM veio vazio): confirme em homologação."
+
+# Na ordem do GET (é a ordem das colunas da planilha e do formulário).
 CAMPOS = (
-    # --- aba Identificação ---
     Campo("CODUSUARIO", "Usuário", obrigatorio=True,
           ajuda="Login do usuário no RM. É a chave do registro."),
     Campo("NOME", "Nome"),
-    Campo("NOMESOCIAL", "Nome Social"),
-    Campo("EMAIL", "E-Mail", tipo=EMAIL),
     Campo("CODACESSO", "Código de Acesso", obrigatorio=True,
           ajuda="Código do grupo/perfil de acesso já cadastrado no RM (ex.: Acesso01)."),
-    Campo("STATUS", "Ativo", tipo=BOOLEANO, padrao=True, ajuda="Sim = usuário ativo; Não = inativo."),
-    Campo("OIDC_ENABLED", "Login OIDC", tipo=BOOLEANO, padrao=False, obrigatorio=True),
-    Campo("OBRIGAALTERARSENHA", "Alterar senha no próximo login", tipo=BOOLEANO, padrao=True),
-    Campo("DIASEXPSENHA", "Força a troca de senha a cada (dias)", tipo=INTEIRO,
-          ajuda="Deixe vazio para não forçar a troca periódica."),
+    Campo("STATUS", "Ativo", tipo=BOOLEANO, padrao=True, ajuda="1 = usuário ativo; 0 = inativo. Vazio = 1."),
     Campo("DATAINICIO", "Início de Validade", tipo=DATA, obrigatorio=True,
-          ajuda="Formato AAAA-MM-DD. Padrão: hoje."),
+          ajuda="Data DD/MM/AAAA (ou AAAA-MM-DD). Padrão do formulário: hoje."),
+    Campo("IGNORARAUTENTICACAOLDAP", "Ignorar autenticação LDAP", tipo=BOOLEANO,
+          padrao=False, aba="Rede", formato_booleano="TF", ajuda="T = sim; F = não. Vazio = F."),
     Campo("DATAEXPIRACAO", "Expiração de Validade", tipo=DATA,
-          ajuda='Vazio = "Sempre é válido".'),
-    # --- aba Rede ---
+          ajuda='Data DD/MM/AAAA. Vazio = "Sempre é válido".'),
     Campo("CODUSUARIOREDE", "Usuário de rede", aba="Rede"),
     Campo("DOMINIOREDE", "Domínio de rede", aba="Rede"),
-    Campo("IGNORARAUTENTICACAOLDAP", "Ignorar autenticação LDAP", tipo=BOOLEANO,
-          padrao=False, aba="Rede", formato_booleano="TF"),
+    Campo("EMAIL", "E-Mail", tipo=EMAIL),
+    Campo("NOMESOCIAL", "Nome Social"),
+    Campo("CODEXTERNO", "Código externo", aba="Outros"),
+    Campo("INTEGRADOFLUIG", "Integrado ao Fluig", tipo=INTEIRO, aba="Outros",
+          ajuda="0 ou 1. Vazio = não envia (o RM mantém o valor dele)."),
+    Campo("OIDC_ENABLED", "Login OIDC", tipo=BOOLEANO, padrao=False, obrigatorio=True,
+          ajuda="1 = sim; 0 = não. Vazio = 0."),
+    Campo("CONFIRMABTNOK", "Confirma botão OK", tipo=INTEIRO, aba="Outros", ajuda=_INFERIDO),
+    Campo("ULTIMACOLIGADA", "Última coligada", tipo=INTEIRO, aba="Outros",
+          ajuda="Código da coligada que abre por padrão."),
+    Campo("DIASEXPSENHA", "Força a troca de senha a cada (dias)", tipo=INTEIRO,
+          ajuda="Deixe vazio para não forçar a troca periódica."),
+    Campo("OBRIGAALTERARSENHA", "Alterar senha no próximo login", tipo=BOOLEANO, padrao=True,
+          ajuda="1 = sim; 0 = não. Vazio = 1."),
+    Campo("ACESSONET", "Acesso .NET", tipo=INTEIRO, aba="Outros", ajuda=_INFERIDO),
+    Campo("LIVEID", "Live ID", aba="Outros"),
+    Campo("USUARIOTWITTER", "Usuário Twitter", aba="Outros"),
+    Campo("USUARIOFACEBOOK", "Usuário Facebook", aba="Outros"),
+    Campo("USUARIOLINKEDIN", "Usuário LinkedIn", aba="Outros"),
+    Campo("FULLDETERMINED", "Full determined", tipo=INTEIRO, aba="Outros", ajuda=_INFERIDO),
+    Campo("USERID", "User ID", aba="Outros"),
+    Campo("USERIDFLUIGIDENTITY", "User ID Fluig Identity", aba="Outros"),
 )
 
 _POR_NOME = {c.nome: c for c in CAMPOS}
+# Garantias do formato: campos do schema na mesma ordem do GET, sem credencial.
+assert [c.nome for c in CAMPOS] == [k for k in CAMPOS_GET if k in _POR_NOME]
+assert not set(_POR_NOME) & set(CREDENCIAIS + CONTROLADOS_PELO_RM)
 
 
 def _regras(valores: dict, operacao: str) -> list[dict]:
@@ -72,7 +113,12 @@ def _avisos(valores: dict, operacao: str) -> list[str]:
 
 
 def gerar_payload(valores: dict, fuso: str = FUSO_PADRAO) -> dict:
-    """Payload no formato do REST do DataServer: só campos preenchidos (ou booleanos)."""
+    """
+    Corpo do ENVIO (POST/PUT) no formato do REST do DataServer, na ordem do GET:
+    só campos preenchidos (ou booleanos). Não leva null de propósito: num PUT,
+    um null apagaria o que já está no RM. O JSON completo, igual ao GET, é o
+    `registro_completo` (base.py).
+    """
     payload = {}
     for c in CAMPOS:
         v = valores.get(c.nome)
@@ -85,21 +131,24 @@ def gerar_payload(valores: dict, fuso: str = FUSO_PADRAO) -> dict:
 def _entrega(payload: dict, operacao: str) -> dict:
     cod = payload.get("CODUSUARIO", "usuario")
     nome_arquivo = f"GlbUsuarioData_{operacao}_{cod}.json"
+    nome_envio = f"GlbUsuarioData_{operacao}_{cod}_envio.json"
     base = "https://<SEU_SERVIDOR>:<PORTA>/rmsrestdataserver/rest/GlbUsuarioData"
     if operacao == "incluir":
-        envio = f'curl -X POST "{base}" -H "Content-Type: application/json" -u "<SEU_USUARIO_RM>:<SUA_SENHA_RM>" --data "@{nome_arquivo}"'
+        envio = f'curl -X POST "{base}" -H "Content-Type: application/json" -u "<SEU_USUARIO_RM>:<SUA_SENHA_RM>" --data "@{nome_envio}"'
     else:
-        envio = f'curl -X PUT "{base}/{cod}" -H "Content-Type: application/json" -u "<SEU_USUARIO_RM>:<SUA_SENHA_RM>" --data "@{nome_arquivo}"'
+        envio = f'curl -X PUT "{base}/{cod}" -H "Content-Type: application/json" -u "<SEU_USUARIO_RM>:<SUA_SENHA_RM>" --data "@{nome_envio}"'
     return {
         "nome_arquivo": nome_arquivo,
+        "nome_arquivo_envio": nome_envio,
         "instrucoes": [
             "Esta ferramenta NÃO envia nada ao RM: o arquivo gerado é enviado por você.",
-            "Salve o JSON gerado (botão Baixar) e confira o conteúdo na prévia.",
+            "O JSON da prévia está no mesmo formato do GET do RM (messages, length, data; todos os campos). "
+            "Para o POST/PUT use o \"corpo do envio\": só o registro, só com os campos preenchidos.",
             "Teste primeiro em um ambiente de homologação.",
             f"Exemplo de envio (ajuste servidor, porta e autenticação ao seu ambiente): {envio}",
             "No SOAP UI/Postman/Insomnia: use o mesmo endereço, método "
             + ("POST" if operacao == "incluir" else "PUT")
-            + ', cabeçalho Content-Type: application/json e cole o JSON como corpo.',
+            + ', cabeçalho Content-Type: application/json e cole o corpo do envio.',
             "Confira no RM (Usuários) se o registro foi criado/atualizado como esperado.",
             "Nunca coloque usuário e senha do RM neste site nem no arquivo gerado.",
         ],
@@ -145,13 +194,19 @@ MODULO = Modulo(
     entrega=_entrega,
     entrega_lote=_entrega_lote,
     campo_chave="CODUSUARIO",
-    versao_schema="1",
+    versao_schema="2",  # v2: colunas com os nomes do RM, na ordem do GET, valores 1/0 e T/F
     tabela_xml="GUSUARIO",
     listas_config={"codigos_acesso": "CODACESSO"},
+    campos_saida=CAMPOS_GET,
+    id_do_registro=lambda payload: payload.get("CODUSUARIO"),
     nao_validado=(
         "Tamanhos máximos dos campos não foram confirmados (só há um teto geral de 255 caracteres).",
-        "Os formatos de OBRIGAALTERARSENHA (1/0) e DIASEXPSENHA (inteiro) foram inferidos: o exemplo "
-        "recebido só tinha esses campos vazios.",
+        "Os formatos de OBRIGAALTERARSENHA (1/0), DIASEXPSENHA, INTEGRADOFLUIG, CONFIRMABTNOK, "
+        "ULTIMACOLIGADA, ACESSONET e FULLDETERMINED (inteiros) foram inferidos: o exemplo recebido "
+        "só tinha esses campos vazios ou zerados.",
+        "Credenciais (SENHA, TOTPSECRETKEY, senhas de redes sociais, ULTIMASSENHAS) e campos que o RM "
+        "controla (último acesso, logins inválidos, CONTROLE, DTAEXPSENHA) saem null no JSON e nunca "
+        "vão no envio.",
         "A URL do REST, a porta e a autenticação são do seu ambiente (placeholders nas instruções).",
         "A alteração (PUT) usa o código do usuário na URL -- confirme no seu ambiente.",
         "O XML (DataSet para SaveRecord) foi inferido do padrão do RM e não foi confirmado: valide em homologação.",

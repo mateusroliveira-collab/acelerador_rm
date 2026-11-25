@@ -25,7 +25,11 @@ def test_lote_valido_ponta_a_ponta():
     assert registros[0]["DATAINICIO"] == "2026-11-18T00:00:00-03:00"  # dd/mm/aaaa convertido
     assert registros[1]["STATUS"] == 0
     assert r["nome_arquivo"].endswith("_lote.jsonl")
-    assert json.loads(r["json"]) == registros
+    # registros do envio = JSONL; JSON para baixar = formato do GET (envelope + todas as chaves)
+    assert r["registros"] == registros
+    get = json.loads(r["json"])
+    assert get["messages"] == [] and get["length"] == 2 and len(get["data"]) == 2
+    assert get["data"][0]["id"] == "ana.teste" and get["data"][0]["DATAEXPIRACAO"] is None
     assert any("Invoke-RestMethod -Method Post" in i for i in r["instrucoes"])
 
 

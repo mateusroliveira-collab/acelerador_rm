@@ -14,38 +14,55 @@ diferente do que o validador espera. Não depende de Google nem de link.
   `docs/exemplos/cadastro_usuarios_ficticio.xlsx`): 30 usuários, 27 válidos e 3 com erro (linhas 6, 12 e 20).
 
 Abaixo, a especificação do conteúdo do modelo (a mesma vale para uma planilha do Google, se preferir
-montar uma à mão). A ferramenta reconhece o cabeçalho pelos **rótulos da tela do RM**.
+montar uma à mão). O modelo segue o **formato do GET** do `GlbUsuarioData`: cabeçalho com os nomes
+técnicos dos campos, **na mesma ordem** em que o RM devolve, e valores como o RM grava (1/0, T/F).
+Ficam de fora só o `id` (é o próprio `CODUSUARIO`), as credenciais (`SENHA`, `TOTPSECRETKEY`, senhas
+de redes sociais, `ULTIMASSENHAS`) e os campos que o RM controla (`DATAULTIMOACESSO`,
+`DATAULTIMOACESSOVALIDO`, `CONTROLE`, `DTAEXPSENHA`, `NUMLOGININVALIDO`, `DATALOGININVALIDO`) — no
+JSON de saída eles aparecem, com `null`.
 
 ## Aba "Dados"
 Linha 1 = cabeçalho (congelada e protegida). Linhas 2 a 501 = dados (até 500 usuários).
 
-| Col | Cabeçalho (exatamente assim) | Obrig. | Validação / formato |
+| Col | Cabeçalho | Obrig. | Validação / formato |
 |---|---|---|---|
-| A | `Usuário *` | Sim | texto |
-| B | `Nome` | | texto |
-| C | `Nome Social` | | texto |
-| D | `E-Mail` | | e-mail válido |
-| E | `Código de Acesso *` | Sim | lista = `Listas!A2:A200` (recusa valor fora da lista) |
-| F | `Ativo` | | lista `Sim`, `Não` (vazio = Sim) |
-| G | `Login OIDC *` | Sim | lista `Sim`, `Não` (vazio = Não) |
-| H | `Alterar senha no próximo login` | | lista `Sim`, `Não` (vazio = Sim) |
-| I | `Força a troca de senha a cada (dias)` | | número inteiro, 0 ou maior |
-| J | `Início de Validade *` | Sim | data, formato `dd/MM/yyyy` |
-| K | `Expiração de Validade` | | data, formato `dd/MM/yyyy` (vazio = sempre válido) |
-| L | `Usuário de rede` | | texto |
-| M | `Domínio de rede` | | texto |
-| N | `Ignorar autenticação LDAP` | | lista `Sim`, `Não` (vazio = Não) |
+| A | `CODUSUARIO` | Sim | texto (login; chave do registro) |
+| B | `NOME` | | texto |
+| C | `CODACESSO` | Sim | lista = `Listas!A2:A200` (recusa valor fora da lista) |
+| D | `STATUS` | | lista `1`, `0` (vazio = 1, ativo) |
+| E | `DATAINICIO` | Sim | data, formato `dd/MM/yyyy` |
+| F | `IGNORARAUTENTICACAOLDAP` | | lista `T`, `F` (vazio = F) |
+| G | `DATAEXPIRACAO` | | data, formato `dd/MM/yyyy` (vazio = sempre válido) |
+| H | `CODUSUARIOREDE` | | texto |
+| I | `DOMINIOREDE` | | texto |
+| J | `EMAIL` | | e-mail válido |
+| K | `NOMESOCIAL` | | texto |
+| L | `CODEXTERNO` | | texto |
+| M | `INTEGRADOFLUIG` | | inteiro (vazio = não envia) |
+| N | `OIDC_ENABLED` | Sim | lista `1`, `0` (vazio = 0) |
+| O | `CONFIRMABTNOK` | | inteiro *(tipo inferido)* |
+| P | `ULTIMACOLIGADA` | | inteiro |
+| Q | `DIASEXPSENHA` | | inteiro, 0 ou maior |
+| R | `OBRIGAALTERARSENHA` | | lista `1`, `0` (vazio = 1) |
+| S | `ACESSONET` | | inteiro *(tipo inferido)* |
+| T | `LIVEID` | | texto |
+| U | `USUARIOTWITTER` | | texto |
+| V | `USUARIOFACEBOOK` | | texto |
+| W | `USUARIOLINKEDIN` | | texto |
+| X | `FULLDETERMINED` | | inteiro *(tipo inferido)* |
+| Y | `USERID` | | texto |
+| Z | `USERIDFLUIGIDENTITY` | | texto |
 
 Formatação:
-- Cabeçalho em negrito, centralizado. Obrigatórios (`*`) com fundo amarelo (`#FFF2CC`); demais cinza (`#EFEFEF`).
-- Colunas de texto (A, B, C, D, L, M) com formato **Texto simples** (preserva zeros à esquerda).
-- Colunas J e K com formato de data `dd/MM/yyyy`.
-- Em cada título, uma **nota** com o que é o campo e como preencher.
+- Cabeçalho em negrito, centralizado. Obrigatórios com fundo amarelo (`#FFF2CC`); demais cinza (`#EFEFEF`).
+- Colunas de texto com formato **Texto simples** (preserva zeros à esquerda); datas em `dd/MM/yyyy`.
+- Em cada título, uma **nota** com o nome do campo na tela do RM, o formato e como preencher.
 - Validações rígidas ("Rejeitar entrada") com seta de lista onde houver.
-- Linha 1 congelada. **Proteger intervalo** A1:N1 (só o dono edita).
+- Linha 1 congelada e protegida.
 
-> O `*` no cabeçalho é ignorado pela ferramenta. Não renomeie os títulos: o reconhecimento
-> depende deles (há um teste automatizado que garante o mapeamento).
+> Não renomeie os títulos: o reconhecimento depende deles (há um teste automatizado que garante o
+> mapeamento). Planilhas antigas, com os rótulos da tela (`Usuário *`, `Ativo`...) e `Sim`/`Não`,
+> continuam sendo aceitas.
 
 ## Aba "Listas"
 | A |
@@ -61,15 +78,24 @@ Protegida (só o analista edita). Se ficar com os valores de exemplo, o cliente 
 ## Aba "Instruções"
 Texto para o cliente (protegida):
 
-1. Preencha a aba **Dados**, uma linha por usuário. Colunas com `*` e fundo amarelo são obrigatórias.
-2. Passe o mouse no título da coluna para ver como preencher.
-3. Colunas com seta têm uma lista: escolha o valor. Datas: DD/MM/AAAA.
-4. **Não informe senha.** Ela não faz parte deste cadastro.
-5. Não altere o cabeçalho nem a ordem das colunas.
-6. Ao terminar, avise o analista.
+1. Preencha a aba **Dados**, uma linha por usuário. Colunas com fundo amarelo são obrigatórias.
+2. O cabeçalho usa os nomes dos campos do RM, na ordem em que o RM devolve os dados.
+3. Passe o mouse no título da coluna para ver o que é e como preencher.
+4. Sim/não como o RM grava: `1`/`0` (`IGNORARAUTENTICACAOLDAP`: `T`/`F`).
+5. Colunas com seta têm uma lista: escolha o valor. Datas: DD/MM/AAAA.
+6. **Não informe senha.** Ela não faz parte deste cadastro.
+7. Não altere o cabeçalho nem a ordem das colunas.
+8. Ao terminar, avise o analista.
 
-Exemplo de linha (fica **só nesta aba**, nunca na aba Dados):
-`maria.silva | Maria Silva | | maria.silva@empresa.com | Acesso01 | Sim | Não | Sim | | 01/12/2026 | | | | Não`
+Abaixo do texto, a aba traz o **dicionário dos campos** (campo, descrição, obrigatório, formato).
+
+Exemplo de linha (colunas A a G; o resto vazio):
+`maria.silva | Maria Silva | Acesso01 | 1 | 01/12/2026 | F | `
+
+## Saída
+- **JSON (formato do GET)**: `{"messages": [], "length": N, "data": [ ... ]}`, cada registro com as
+  39 chaves do GET na mesma ordem (`id` = `CODUSUARIO`; o que não foi preenchido sai `null`).
+- **Envio ao RM** (conector / JSONL): um registro por chamada, só com os campos preenchidos.
 
 ## Como usar
 ### Com o modelo Excel (recomendado)

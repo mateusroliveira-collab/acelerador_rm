@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import tempfile
@@ -60,6 +61,37 @@ def test_payload_tem_formato_do_exemplo_do_rm():
     assert "DATAEXPIRACAO" not in payload  # vazio = sempre válido
 
 
+# Chaves do GET real de GlbUsuarioData, na ordem em que o RM devolve.
+ORDEM_GET = [
+    "id", "CODUSUARIO", "NOME", "CODACESSO", "STATUS", "DATAINICIO", "IGNORARAUTENTICACAOLDAP",
+    "DATAEXPIRACAO", "DATAULTIMOACESSO", "CODUSUARIOREDE", "DOMINIOREDE", "EMAIL", "NOMESOCIAL",
+    "DATAULTIMOACESSOVALIDO", "CODEXTERNO", "INTEGRADOFLUIG", "OIDC_ENABLED", "TOTPSECRETKEY",
+    "CONFIRMABTNOK", "SENHA", "CONTROLE", "ULTIMACOLIGADA", "DTAEXPSENHA", "DIASEXPSENHA",
+    "OBRIGAALTERARSENHA", "NUMLOGININVALIDO", "DATALOGININVALIDO", "ACESSONET", "LIVEID",
+    "USUARIOTWITTER", "SENHATWITTER", "USUARIOFACEBOOK", "SENHAFACEBOOK", "USUARIOLINKEDIN",
+    "SENHALINKEDIN", "FULLDETERMINED", "USERID", "USERIDFLUIGIDENTITY", "ULTIMASSENHAS",
+]
+
+
+def test_registro_completo_tem_o_formato_do_get():
+    from api._lib.dataserver.base import envelope_get, registro_completo
+    normalizados, _ = normalizar_e_validar(MODULO, VALIDO, "incluir")
+    reg = registro_completo(MODULO, gerar_payload(normalizados))
+    assert list(reg) == ORDEM_GET
+    assert reg["id"] == reg["CODUSUARIO"] == "fulano.teste"
+    assert (reg["STATUS"], reg["IGNORARAUTENTICACAOLDAP"], reg["OIDC_ENABLED"]) == (1, "F", 0)
+    assert reg["DATAINICIO"] == "2026-11-18T00:00:00-03:00"
+    assert reg["SENHA"] is None and reg["TOTPSECRETKEY"] is None and reg["DATAEXPIRACAO"] is None
+    assert envelope_get([reg]) == {"messages": [], "length": 1, "data": [reg]}
+
+
+def test_payload_de_envio_segue_a_ordem_do_get_sem_nulls():
+    normalizados, _ = normalizar_e_validar(MODULO, VALIDO, "incluir")
+    payload = gerar_payload(normalizados)
+    assert list(payload) == [k for k in ORDEM_GET if k in payload]
+    assert None not in payload.values()  # num PUT, null apagaria o valor no RM
+
+
 def test_payload_nunca_leva_senha_nem_campos_do_rm():
     normalizados, _ = normalizar_e_validar(MODULO, {**VALIDO, "SENHA": "x", "TOTPSECRETKEY": "y"}, "incluir")
     payload = gerar_payload(normalizados)
@@ -115,6 +147,10 @@ def test_rota_gerar_incluir_e_alterar():
     assert corpo["nome_arquivo"] == "GlbUsuarioData_incluir_fulano.teste.json"
     assert any("POST" in i for i in corpo["instrucoes"])
     assert "SENHA" not in corpo["payload"]  # credencial nunca vai no payload
+    get = json.loads(corpo["json"])  # prévia no formato do GET
+    assert list(get) == ["messages", "length", "data"] and list(get["data"][0]) == ORDEM_GET
+    assert json.loads(corpo["json_envio"]) == corpo["payload"]
+    assert corpo["nome_arquivo_envio"] == "GlbUsuarioData_incluir_fulano.teste_envio.json"
 
     r = client.post("/api/dataserver/glb-usuario/gerar", json={"operacao": "alterar", "valores": VALIDO})
     assert r.status_code == 200 and any("PUT" in i for i in r.json()["instrucoes"])

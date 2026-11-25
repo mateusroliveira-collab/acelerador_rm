@@ -40,8 +40,13 @@ class Campo:
             "nome": self.nome, "rotulo": self.rotulo, "tipo": self.tipo,
             "obrigatorio": self.obrigatorio, "padrao": self.padrao,
             "ajuda": self.ajuda, "aba": self.aba, "tamanho_max": self.tamanho_max,
+            "formato_booleano": self.formato_booleano if self.tipo == BOOLEANO else None,
             "opcoes": opcoes,  # lista fechada de valores válidos (config do cliente) ou None
         }
+
+    def valores_booleanos(self) -> tuple[str, str]:
+        """(sim, não) como o RM grava o campo: ("1", "0") ou ("T", "F")."""
+        return ("T", "F") if self.formato_booleano == "TF" else ("1", "0")
 
 
 @dataclass(frozen=True)
@@ -72,6 +77,12 @@ class Modulo:
     listas_config: dict = field(default_factory=dict)
     # (operacao, nome_arquivo, total_validos) -> instruções de envio do lote
     entrega_lote: Callable[[str, str, int], list] = lambda operacao, nome_arquivo, total: []
+    # Todas as chaves que o GET do DataServer devolve, NA ORDEM do GET. O JSON
+    # de saída segue esse formato (campo fora do payload sai null). Vazio = só
+    # os campos do schema.
+    campos_saida: tuple[str, ...] = field(default_factory=tuple)
+    # (payload) -> valor do "id" do GET (a chave primária do registro); None = sem "id".
+    id_do_registro: Callable[[dict], Any] | None = None
 
     def para_dict(self, config: dict | None = None) -> dict:
         por_campo = {campo: chave for chave, campo in self.listas_config.items()}
@@ -195,3 +206,22 @@ def valor_no_payload(campo: Campo, valor: Any, fuso: str) -> Any:
     if campo.tipo == DATA:
         return f"{valor.isoformat()}T00:00:00{fuso}"
     return valor
+
+
+def registro_completo(modulo: Modulo, payload: dict) -> dict:
+    """
+    O registro no MESMO formato do GET do DataServer: todas as chaves, na ordem
+    do GET, com null no que não está no payload (credenciais e campos
+    controlados pelo RM sempre saem null).
+    """
+    if not modulo.campos_saida:
+        return dict(payload)
+    registro = {chave: payload.get(chave) for chave in modulo.campos_saida}
+    if "id" in registro and modulo.id_do_registro:
+        registro["id"] = modulo.id_do_registro(payload)
+    return registro
+
+
+def envelope_get(registros: list[dict]) -> dict:
+    """Envelope da resposta do GET do REST do RM: {"messages", "length", "data"}."""
+    return {"messages": [], "length": len(registros), "data": registros}

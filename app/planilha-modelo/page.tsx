@@ -82,9 +82,17 @@ export default function PlanilhaModeloPage() {
           <h2 className="font-display text-sm font-bold text-ink">Como preencher</h2>
           <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm text-muted">
             <li>Preencha a aba <strong>Dados</strong>, uma linha por usuário.</li>
-            <li>Colunas com <strong>*</strong> e fundo amarelo são obrigatórias.</li>
             <li>
-              Colunas com seta têm uma lista: escolha o valor (Sim/Não, código de acesso). Se a lista
+              O cabeçalho usa os nomes dos campos do sistema (CODUSUARIO, NOME, CODACESSO...). Colunas
+              com fundo amarelo são obrigatórias; passe o mouse no título para ver o que é cada uma
+              (a aba <strong>Instruções</strong> tem a lista completa).
+            </li>
+            <li>
+              Campos de sim/não: <strong>1</strong> = sim e <strong>0</strong> = não
+              (IGNORARAUTENTICACAOLDAP usa <strong>T</strong> = sim e <strong>F</strong> = não).
+            </li>
+            <li>
+              Colunas com seta têm uma lista: escolha o valor (código de acesso, 1/0, T/F). Se a lista
               de códigos de acesso vier com valores de exemplo, peça os códigos corretos ao seu
               analista.
             </li>

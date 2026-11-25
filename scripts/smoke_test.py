@@ -80,7 +80,7 @@ r = client.post("/api/dataserver/glb-usuario/lote", json={"operacao": "incluir",
 checar("POST /api/dataserver/glb-usuario/lote", r.status_code == 200 and r.json()["validos"] == 2)
 
 r = client.get("/api/v1/dataserver/modulos")
-checar("GET /api/v1/dataserver/modulos", r.status_code == 200 and r.json()[0]["versao_schema"] == "1")
+checar("GET /api/v1/dataserver/modulos", r.status_code == 200 and r.json()[0]["versao_schema"] == "2")
 
 r = client.get("/api/v1/dataserver/modulos")
 checar("modulos traz planilha_modelo_url", r.status_code == 200 and "planilha_modelo_url" in r.json()[0])

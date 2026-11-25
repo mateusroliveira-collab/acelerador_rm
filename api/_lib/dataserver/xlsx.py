@@ -18,7 +18,7 @@ import io
 import zipfile
 from datetime import date, datetime
 
-from .base import BOOLEANO, DATA, EMAIL, INTEIRO, Modulo
+from .base import BOOLEANO, DATA, EMAIL, INTEIRO, TEXTO, Modulo
 from .lote import MAX_LINHAS, mapear_colunas
 
 ABA_DADOS = "Dados"
@@ -40,7 +40,23 @@ class XlsxInvalido(ValueError):
 
 
 def _cabecalho(campo) -> str:
-    return campo.rotulo + (" *" if campo.obrigatorio else "")
+    """Nome técnico do campo, igual ao GET do RM (ex.: CODUSUARIO)."""
+    return campo.nome
+
+
+def _formato_aceito(campo) -> str:
+    if campo.tipo == BOOLEANO:
+        sim, nao = campo.valores_booleanos()
+        return f"{sim} = sim, {nao} = não"
+    return {DATA: "data DD/MM/AAAA", INTEIRO: "número inteiro (0 ou mais)", EMAIL: "e-mail"}.get(campo.tipo, "texto")
+
+
+def _dica(campo) -> str:
+    dica = f"{campo.nome} -- {campo.rotulo}" + (" (obrigatório)" if campo.obrigatorio else "")
+    dica += f"\nFormato: {_formato_aceito(campo)}"
+    if campo.ajuda:
+        dica += "\n" + campo.ajuda
+    return dica
 
 
 # ----------------------------------------------------------------------------
@@ -70,10 +86,7 @@ def gerar_modelo_xlsx(modulo: Modulo, config: dict | None = None) -> bytes:
         cel.font = Font(bold=True)
         cel.fill = amarelo if c.obrigatorio else cinza
         cel.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        dica = c.rotulo + (" (obrigatório)" if c.obrigatorio else "")
-        if c.ajuda:
-            dica += "\n" + c.ajuda
-        cel.comment = Comment(dica, "Acelerador RM", width=260, height=90)
+        cel.comment = Comment(_dica(c), "Acelerador RM", width=280, height=110)
         ws.column_dimensions[letra].width = max(16, min(38, len(_cabecalho(c)) + 4))
 
         faixa = f"{letra}2:{letra}{ultima}"
@@ -81,9 +94,10 @@ def gerar_modelo_xlsx(modulo: Modulo, config: dict | None = None) -> bytes:
         if c.nome in por_campo_lista:  # lista vem da aba Listas
             dv = DataValidation(type="list", formula1=f"{ABA_LISTAS}!$A$2:$A${LINHA_FINAL_LISTA}", allow_blank=True)
             dv.error = "Escolha um código da lista (aba Listas)."
-        elif c.tipo == BOOLEANO:
-            dv = DataValidation(type="list", formula1='"Sim,Não"', allow_blank=True)
-            dv.error = "Escolha Sim ou Não."
+        elif c.tipo == BOOLEANO:  # valores como o RM grava: 1/0 ou T/F
+            sim, nao = c.valores_booleanos()
+            dv = DataValidation(type="list", formula1=f'"{sim},{nao}"', allow_blank=True)
+            dv.error = f"Escolha {sim} (sim) ou {nao} (não)."
         elif c.tipo == DATA:
             dv = DataValidation(type="custom", formula1=f"ISNUMBER({letra}2)", allow_blank=True)
             dv.error = "Informe uma data válida no formato DD/MM/AAAA."
@@ -101,19 +115,19 @@ def gerar_modelo_xlsx(modulo: Modulo, config: dict | None = None) -> bytes:
             dv.errorTitle = "Valor inválido"
             dv.errorStyle = "stop"
             dv.showErrorMessage = True
-            if c.ajuda:
-                dv.promptTitle = c.rotulo[:30]
-                dv.prompt = c.ajuda[:250]
-                dv.showInputMessage = True
+            dv.promptTitle = c.nome[:30]
+            dv.prompt = (c.rotulo + ": " + (c.ajuda or _formato_aceito(c)))[:250]
+            dv.showInputMessage = True
             ws.add_data_validation(dv)
             dv.add(faixa)
 
         # Formato e destrava das células de dados (o resto da aba fica protegido).
         formato = "DD/MM/YYYY" if c.tipo == DATA else "@"
+        texto_simples = c.tipo in (TEXTO, EMAIL, DATA) or (c.tipo == BOOLEANO and c.formato_booleano == "TF")
         for linha in range(2, ultima + 1):
             cel_dado = ws.cell(row=linha, column=j)
             cel_dado.protection = Protection(locked=False)
-            if c.tipo != INTEIRO and c.tipo != BOOLEANO:
+            if texto_simples:
                 cel_dado.number_format = formato
 
     ws.row_dimensions[1].height = 34
@@ -122,7 +136,7 @@ def gerar_modelo_xlsx(modulo: Modulo, config: dict | None = None) -> bytes:
 
     # --- Listas ---------------------------------------------------------------
     wl = wb.create_sheet(ABA_LISTAS)
-    wl["A1"] = "Códigos de acesso"
+    wl["A1"] = "CODACESSO (códigos de acesso)"
     wl["A1"].font = Font(bold=True)
     codigos = (config or {}).get("codigos_acesso") if config else None
     if not (isinstance(codigos, list) and codigos):
@@ -137,22 +151,36 @@ def gerar_modelo_xlsx(modulo: Modulo, config: dict | None = None) -> bytes:
     # --- Instruções -----------------------------------------------------------
     wi = wb.create_sheet(ABA_INSTRUCOES)
     linhas = [
-        f"Como preencher -- {modulo.nome}",
+        f"Como preencher -- {modulo.nome} ({modulo.dataserver})",
         "",
-        "1. Preencha a aba Dados, uma linha por usuário. Colunas com * e fundo amarelo são obrigatórias.",
-        "2. Passe o mouse no título da coluna (ou selecione a célula) para ver como preencher.",
-        "3. Colunas com seta têm uma lista: escolha o valor. Datas: DD/MM/AAAA.",
-        "4. Deixe vazio o que não souber -- exceto as colunas obrigatórias.",
-        "5. NÃO informe senha: ela não faz parte deste cadastro.",
-        "6. Não altere o cabeçalho (linha 1) nem a ordem das colunas.",
-        "7. Ao terminar, salve e envie a planilha ao seu analista.",
+        "1. Preencha a aba Dados, uma linha por usuário. Colunas com fundo amarelo são obrigatórias.",
+        "2. O cabeçalho usa os nomes dos campos do RM, na mesma ordem em que o RM devolve os dados.",
+        "3. Passe o mouse no título da coluna (ou selecione a célula) para ver o que é e como preencher.",
+        "4. Sim/não vai como o RM grava: 1 = sim e 0 = não (IGNORARAUTENTICACAOLDAP usa T = sim e F = não).",
+        "5. Colunas com seta têm uma lista: escolha o valor. Datas: DD/MM/AAAA.",
+        "6. Deixe vazio o que não souber -- exceto as colunas obrigatórias.",
+        "7. NÃO informe senha: ela não faz parte deste cadastro.",
+        "8. Não altere o cabeçalho (linha 1) nem a ordem das colunas.",
+        "9. Ao terminar, salve e envie a planilha ao seu analista.",
         "",
         f"Versão do modelo: {modulo.chave} v{modulo.versao_schema}",
     ]
     for i, texto in enumerate(linhas, start=1):
         wi.cell(row=i, column=1, value=texto)
     wi["A1"].font = Font(bold=True, size=13)
-    wi.column_dimensions["A"].width = 110
+
+    # Dicionário dos campos (uma linha por coluna da aba Dados).
+    inicio = len(linhas) + 2
+    for j, titulo in enumerate(("Campo", "Descrição", "Obrigatório", "Formato", "Observação"), start=1):
+        wi.cell(row=inicio, column=j, value=titulo).font = Font(bold=True)
+    for i, c in enumerate(campos, start=inicio + 1):
+        wi.cell(row=i, column=1, value=c.nome)
+        wi.cell(row=i, column=2, value=c.rotulo)
+        wi.cell(row=i, column=3, value="Sim" if c.obrigatorio else "")
+        wi.cell(row=i, column=4, value=_formato_aceito(c))
+        wi.cell(row=i, column=5, value=c.ajuda)
+    for letra, largura in zip("ABCDE", (26, 36, 12, 28, 70)):
+        wi.column_dimensions[letra].width = largura
     wi.protection.sheet = True
 
     # --- _meta (oculta): identifica módulo e versão pra detectar modelo antigo ---
@@ -282,7 +310,7 @@ def anotar_planilha(conteudo: bytes, modulo: Modulo, resultado: dict) -> bytes:
     if ABA_ERROS in wb.sheetnames:
         del wb[ABA_ERROS]
     we = wb.create_sheet(ABA_ERROS, 0)
-    we.append(["Linha", "Usuário", "Problemas"])
+    we.append(["Linha", modulo.campo_chave or "Registro", "Problemas"])
     for c in we[1]:
         c.font = Font(bold=True)
     for l in resultado["linhas"]:

@@ -29,7 +29,9 @@ type Modulo = {
 };
 type Valores = Record<string, string | boolean>;
 type Resultado = {
-  json: string;
+  json: string; // formato do GET do RM (messages, length, data)
+  json_envio: string; // corpo do POST/PUT: só o registro, só campos preenchidos
+  nome_arquivo_envio: string;
   nome_arquivo: string;
   instrucoes: string[];
   avisos: string[];
@@ -65,8 +67,9 @@ type ResultadoLote = {
   invalidos: number;
   avisos_gerais: string[];
   linhas: LinhaLote[];
+  registros?: Record<string, unknown>[]; // corpo de cada envio (só campos preenchidos)
   jsonl?: string;
-  json?: string;
+  json?: string; // formato do GET do RM (messages, length, data)
   nome_arquivo?: string;
   xml?: string;
   nome_arquivo_xml?: string;
@@ -105,15 +108,13 @@ export default function GeradorDataServerPage() {
 
   const modulo = modulos.find((m) => m.chave === chave) ?? null;
 
-  // Registros válidos do lote (memorizado: o envio ao RM reinicia quando a lista muda).
-  const registrosLote = useMemo<Record<string, unknown>[]>(() => {
-    try {
-      const lista = JSON.parse(lote?.json ?? "[]");
-      return Array.isArray(lista) ? lista : [];
-    } catch {
-      return [];
-    }
-  }, [lote]);
+  // Registros válidos do lote, no formato do envio (memorizado: o envio ao RM
+  // reinicia quando a lista muda). Não usa o JSON "do GET": ele traz null em
+  // todos os campos vazios, e num PUT um null apagaria o valor no RM.
+  const registrosLote = useMemo<Record<string, unknown>[]>(
+    () => (Array.isArray(lote?.registros) ? lote.registros : []),
+    [lote]
+  );
 
   function carregarModulos(codigoCliente: string, manterSelecao: boolean) {
     const q = codigoCliente.trim() ? `?cliente=${encodeURIComponent(codigoCliente.trim())}` : "";
@@ -334,11 +335,12 @@ export default function GeradorDataServerPage() {
     baixarBlob(new Blob([conteudo], { type: "application/json;charset=utf-8" }), nome);
   }
 
-  function baixar() {
+  function baixar(qual: "get" | "envio") {
     if (!resultado) return;
+    const envio = qual === "envio";
     baixarBlob(
-      new Blob([resultado.json], { type: "application/json;charset=utf-8" }),
-      resultado.nome_arquivo
+      new Blob([envio ? resultado.json_envio : resultado.json], { type: "application/json;charset=utf-8" }),
+      envio ? resultado.nome_arquivo_envio : resultado.nome_arquivo
     );
   }
 
@@ -478,8 +480,10 @@ export default function GeradorDataServerPage() {
                 <h2 className="font-display text-sm font-bold text-ink">Carga em lote</h2>
                 <p className="mt-1 text-xs text-muted">
                   Cole as linhas copiadas do Excel (com o cabeçalho) ou envie um CSV. Máximo de
-                  500 linhas. O cabeçalho aceita o nome do campo (ex.: CODUSUARIO) ou o rótulo
-                  da tela. Datas podem estar em DD/MM/AAAA. Nada do que você cola é salvo.
+                  500 linhas. O cabeçalho usa os nomes dos campos do RM, na ordem do GET (ex.:
+                  CODUSUARIO, NOME, CODACESSO, STATUS...); o rótulo da tela também é aceito.
+                  Sim/não como o RM grava (1/0; IGNORARAUTENTICACAOLDAP em T/F). Datas em
+                  DD/MM/AAAA. Nada do que você cola é salvo.
                 </p>
                 {modulo.planilha_modelo_url ? (
                   <div className="mt-3 rounded-md border border-line bg-paper p-3">
@@ -563,7 +567,7 @@ export default function GeradorDataServerPage() {
                     setLote(null);
                   }}
                   rows={8}
-                  placeholder={"CODUSUARIO;NOME;CODACESSO;DATAINICIO\nana.teste;Ana Teste;Acesso01;18/11/2026"}
+                  placeholder={"CODUSUARIO;NOME;CODACESSO;STATUS;DATAINICIO\nana.teste;Ana Teste;Acesso01;1;18/11/2026"}
                   className="mt-3 w-full rounded-lg border border-line bg-paper px-3 py-2 font-mono text-xs text-ink placeholder:text-muted focus:border-brand"
                 />
                 <button
@@ -656,9 +660,10 @@ export default function GeradorDataServerPage() {
                           </button>
                           <button
                             onClick={() => baixarLote("json")}
+                            title="Mesmo formato do GET do RM: messages, length e data, com todos os campos"
                             className="rounded-md border border-line px-4 py-2 text-sm text-ink transition hover:border-brand"
                           >
-                            Baixar JSON (lista)
+                            Baixar JSON (formato do GET)
                           </button>
                           {lote.xml && (
                             <button
@@ -728,6 +733,7 @@ export default function GeradorDataServerPage() {
                                 onChange={(e) => alterar(c.nome, e.target.checked)}
                               />
                               <span className={c.obrigatorio ? "font-bold" : ""}>{c.rotulo}</span>
+                              <span className="font-mono text-[11px] text-muted">{c.nome}</span>
                             </label>
                           ) : (
                             <>
@@ -735,7 +741,8 @@ export default function GeradorDataServerPage() {
                                 htmlFor={id}
                                 className={`block text-sm text-ink ${c.obrigatorio ? "font-bold" : ""}`}
                               >
-                                {c.rotulo}
+                                {c.rotulo}{" "}
+                                <span className="font-mono text-[11px] font-normal text-muted">{c.nome}</span>
                               </label>
                               {c.opcoes && c.opcoes.length > 0 ? (
                                 <select
@@ -816,18 +823,29 @@ export default function GeradorDataServerPage() {
             <pre className="mt-3 max-h-96 overflow-auto rounded-md border border-line bg-paper p-3 font-mono text-xs text-ink">
               {resultado.json}
             </pre>
+            <p className="mt-2 text-xs text-muted">
+              Mesmo formato do GET do RM (messages, length, data). Campos vazios, credenciais e
+              campos controlados pelo RM saem null.
+            </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <button
-                onClick={baixar}
+                onClick={() => baixar("get")}
                 className="rounded-md bg-action px-4 py-2 text-sm font-medium text-white transition hover:bg-action-hover"
               >
-                Baixar JSON
+                Baixar JSON (formato do GET)
               </button>
               <button
                 onClick={copiar}
                 className="rounded-md border border-line px-4 py-2 text-sm text-ink transition hover:border-brand"
               >
                 {copiado ? "Copiado!" : "Copiar"}
+              </button>
+              <button
+                onClick={() => baixar("envio")}
+                title="Só o registro, só com os campos preenchidos: é o que vai no POST/PUT"
+                className="rounded-md border border-line px-4 py-2 text-sm text-ink transition hover:border-brand"
+              >
+                Baixar corpo do envio (POST/PUT)
               </button>
             </div>
 

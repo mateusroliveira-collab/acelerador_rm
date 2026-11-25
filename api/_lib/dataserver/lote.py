@@ -14,7 +14,7 @@ import re
 import unicodedata
 from typing import Callable
 
-from .base import DATA, Modulo, normalizar_e_validar
+from .base import DATA, Modulo, envelope_get, normalizar_e_validar, registro_completo
 from .xml_saida import gerar_xml
 
 MAX_LINHAS = 500
@@ -144,8 +144,12 @@ def processar_lote(
     }
     if payloads:
         nome_base = f"{modulo.dataserver}_{operacao}_lote"
+        # Envio (conector e script): um registro por chamada, só o que foi preenchido.
+        saida["registros"] = payloads
         saida["jsonl"] = "\n".join(json.dumps(p, ensure_ascii=False) for p in payloads) + "\n"
-        saida["json"] = json.dumps(payloads, ensure_ascii=False, indent=2)
+        # JSON para baixar: o mesmo formato do GET do RM (envelope + todas as chaves).
+        completos = [registro_completo(modulo, p) for p in payloads]
+        saida["json"] = json.dumps(envelope_get(completos), ensure_ascii=False, indent=2)
         saida["nome_arquivo"] = f"{nome_base}.jsonl"
         xml = gerar_xml(modulo, payloads)
         if xml:

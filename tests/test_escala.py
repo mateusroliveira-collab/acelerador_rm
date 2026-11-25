@@ -51,7 +51,7 @@ VALORES = {"CODUSUARIO": "ana.teste", "CODACESSO": "Acesso01", "DATAINICIO": "20
 def test_v1_e_alias_respondem_igual_e_so_v1_esta_na_documentacao():
     a = client.get(f"{V1}/modulos").json()
     b = client.get("/api/dataserver/modulos").json()
-    assert a == b and a[0]["versao_schema"] == "1"
+    assert a == b and a[0]["versao_schema"] == "2"
     paths = client.get("/openapi.json").json()["paths"]
     assert any(p.startswith("/api/v1/dataserver") for p in paths)
     assert not any(p.startswith("/api/dataserver") for p in paths)
@@ -143,12 +143,12 @@ def test_config_corrompida_nao_derruba_a_geracao():
 
 def test_versao_do_schema_nas_respostas_e_no_log_sem_dados_pessoais():
     r = client.post(f"{V1}/glb-usuario/gerar", json={"operacao": "incluir", "cliente": "acme", "valores": VALORES})
-    assert r.json()["versao_schema"] == "1"
+    assert r.json()["versao_schema"] == "2"
     db = SessionLocal()
     try:
         ultimo = db.query(RegistroUso).filter_by(ferramenta="dataserver").order_by(RegistroUso.id.desc()).first()
         detalhes = json.loads(ultimo.detalhes)
-        assert detalhes["versao_schema"] == "1" and detalhes["cliente"] == "acme"
+        assert detalhes["versao_schema"] == "2" and detalhes["cliente"] == "acme"
         assert "ana.teste" not in ultimo.detalhes
     finally:
         db.close()
@@ -170,7 +170,7 @@ def test_contrato_com_o_sheets_valores_como_a_planilha_mostra():
     linhas = [json.loads(l) for l in corpo["jsonl"].strip().splitlines()]
     assert linhas[0]["STATUS"] == 1 and linhas[1]["STATUS"] == 0
     assert linhas[1]["DATAEXPIRACAO"] == "2026-12-31T00:00:00-03:00"
-    assert corpo["versao_schema"] == "1"
+    assert corpo["versao_schema"] == "2"
 
 
 def test_erro_do_lote_traz_campo_e_numero_de_linha_da_planilha():
@@ -181,7 +181,8 @@ def test_erro_do_lote_traz_campo_e_numero_de_linha_da_planilha():
     assert {e["campo"] for e in ruim["erros"]} == {"CODACESSO", "DATAINICIO"}
 
 
-# Cabeçalhos exatamente como estão na planilha modelo (rótulos da tela do RM; * = obrigatório).
+# Cabeçalhos da planilha modelo ANTIGA (v1: rótulos da tela do RM; * = obrigatório). A v2 usa os
+# nomes técnicos na ordem do GET (ver tests/test_xlsx.py), mas a v1 continua sendo aceita.
 CABECALHOS_PLANILHA = [
     "Usuário *", "Nome", "Nome Social", "E-Mail", "Código de Acesso *", "Ativo", "Login OIDC *",
     "Alterar senha no próximo login", "Força a troca de senha a cada (dias)", "Início de Validade *",
@@ -194,8 +195,12 @@ def test_cabecalhos_da_planilha_modelo_mapeiam_todos_os_campos():
     from api._lib.dataserver.lote import mapear_colunas
 
     mapa, ignoradas = mapear_colunas(MODULO, CABECALHOS_PLANILHA)
-    assert ignoradas == []
-    assert [mapa[i] for i in range(len(CABECALHOS_PLANILHA))] == [c.nome for c in MODULO.campos]
+    assert ignoradas == [] and len(mapa) == len(CABECALHOS_PLANILHA)  # planilha antiga: todas reconhecidas
+
+    # modelo atual: nomes técnicos, um por campo, na ordem do schema (= ordem do GET)
+    nomes = [c.nome for c in MODULO.campos]
+    mapa, ignoradas = mapear_colunas(MODULO, nomes)
+    assert ignoradas == [] and [mapa[i] for i in range(len(nomes))] == nomes
 
 
 def test_colar_a_planilha_modelo_inteira_funciona_ponta_a_ponta():

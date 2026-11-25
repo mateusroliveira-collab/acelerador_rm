@@ -17,7 +17,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Re
 from pydantic import BaseModel
 
 from ..clientes import config_do_cliente
-from ..dataserver.base import normalizar_e_validar
+from ..dataserver.base import envelope_get, normalizar_e_validar, registro_completo
 from ..dataserver.glb_usuario import gerar_payload as gerar_payload_glb_usuario
 from ..dataserver.lote import LoteInvalido, processar_lote
 from ..dataserver.planilha import links_planilha_modelo
@@ -31,13 +31,13 @@ router = APIRouter(prefix="/dataserver", tags=["dataserver"])
 # Gerador de payload de cada módulo: (valores normalizados) -> dict.
 _GERADORES = {"glb-usuario": gerar_payload_glb_usuario}
 
-# Linha fictícia do CSV de modelo, por módulo (valores como o analista digitaria no Excel).
+# Linha fictícia do CSV de modelo, por módulo (valores no formato do RM, como no GET).
 _EXEMPLOS_LOTE = {
     "glb-usuario": {
         "CODUSUARIO": "usuario.exemplo", "NOME": "Usuário de Exemplo",
         "EMAIL": "usuario.exemplo@exemplo.com", "CODACESSO": "Acesso01",
-        "STATUS": "sim", "OIDC_ENABLED": "não", "OBRIGAALTERARSENHA": "sim",
-        "DATAINICIO": "01/01/2026", "IGNORARAUTENTICACAOLDAP": "não",
+        "STATUS": "1", "OIDC_ENABLED": "0", "OBRIGAALTERARSENHA": "1",
+        "DATAINICIO": "01/01/2026", "IGNORARAUTENTICACAOLDAP": "F",
     },
 }
 
@@ -198,11 +198,15 @@ def gerar(
     payload = _GERADORES[chave](normalizados)
     entrega = modulo.entrega(payload, pedido.operacao)
     tarefas.add_task(registrar_uso, "dataserver", "gerar", detalhes)
+    nome_arquivo = entrega.get("nome_arquivo", f"{modulo.dataserver}.json")
     return {
         "versao_schema": modulo.versao_schema,
-        "payload": payload,
-        "json": json.dumps(payload, ensure_ascii=False, indent=2),
+        "payload": payload,  # corpo do envio (POST/PUT): só o que foi preenchido
+        "json_envio": json.dumps(payload, ensure_ascii=False, indent=2),
+        "nome_arquivo_envio": entrega.get("nome_arquivo_envio", nome_arquivo.replace(".json", "_envio.json")),
+        # JSON no mesmo formato do GET do RM (envelope + todas as chaves, na ordem)
+        "json": json.dumps(envelope_get([registro_completo(modulo, payload)]), ensure_ascii=False, indent=2),
         "avisos": modulo.avisos(normalizados, pedido.operacao),
-        "nome_arquivo": entrega.get("nome_arquivo", f"{modulo.dataserver}.json"),
+        "nome_arquivo": nome_arquivo,
         "instrucoes": entrega.get("instrucoes", []),
     }

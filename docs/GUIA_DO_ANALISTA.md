@@ -111,10 +111,16 @@ art. 52 §1º).
 5. Com registros válidos, escolha como carregar:
    - **Enviar direto ao RM** (quadro do conector, ver [seção 6](#6-conector-rm)) — recomendado;
    - **JSONL + script PowerShell** (pede usuário/senha com `Get-Credential`);
-   - **JSON** (lista) ou **XML** (formato inferido, *a validar em homologação*).
+   - **JSON (formato do GET)** — igual ao retorno do GET do RM (`messages`, `length`, `data`, com
+     todas as chaves na mesma ordem; o que não foi preenchido sai `null`) — ou **XML** (formato
+     inferido, *a validar em homologação*).
+
+O envio ao RM (conector e JSONL) leva **um registro por chamada, só com os campos preenchidos**: num
+PUT, um `null` apagaria o valor que já está no RM.
 
 ### Formulário (um usuário)
-Preencha os campos e clique **Validar e gerar prévia**: sai o JSON pronto para o REST DataServer.
+Preencha os campos e clique **Validar e gerar prévia**: a prévia sai no formato do GET; o
+**corpo do envio** (botão próprio) é o que vai no POST/PUT.
 
 O que o gerador **nunca** faz: gerar senha ou campos controlados pelo RM. Teste de exemplo:
 `docs/exemplos/cadastro_usuarios_ficticio.xlsx` (30 usuários fictícios; esperado 27 válidos e 3 com
