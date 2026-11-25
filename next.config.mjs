@@ -1,5 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Telas que mudaram de endereço: links antigos continuam funcionando.
+  async redirects() {
+    return [
+      { source: "/conector-rm", destination: "/evento-contabil-automatico", permanent: false },
+      { source: "/analise-mit41", destination: "/hub-mit41", permanent: false },
+      { source: "/pre-processador-mit41", destination: "/hub-mit41", permanent: false },
+    ];
+  },
   async rewrites() {
     // Em desenvolvimento, o backend roda separado (uvicorn na porta 8000,
     // já que o "vercel dev" não funciona na sua rede). Esse rewrite faz

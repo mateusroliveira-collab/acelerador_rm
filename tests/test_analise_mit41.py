@@ -188,3 +188,18 @@ def test_rotas_de_analise():
     assert client.post("/api/xml/analisar-mit41", json={"texto": "   "}).status_code == 400
     r = client.post("/api/xml/analisar-mit41-pdf", files={"arquivo": ("mit.pdf", b"nao e pdf")})
     assert r.status_code == 400
+
+
+def test_hub_junta_interpretador_e_analise():
+    r = client.post("/api/xml/hub-mit41", json={"texto": MIT_BRUTA})
+    assert r.status_code == 200
+    corpo = r.json()
+    assert corpo["analise"]["resumo"]["total"] == 2
+    nums_analise = [m["numero"] for m in corpo["analise"]["movimentos"]]
+    nums_sub = [s["numero"] for s in corpo["subprocessos"]]
+    assert nums_analise == ["4.1.1.1", "4.1.1.2"] and set(nums_analise) <= set(nums_sub)  # cruzam pelo número
+    sub = next(s for s in corpo["subprocessos"] if s["numero"] == "4.1.1.1")
+    assert "e-mail" in (sub["texto_as_is"] or "") and sub["texto_to_be"]
+    assert corpo["texto_para_ponte"]
+    assert client.post("/api/xml/hub-mit41", json={"texto": "   "}).status_code == 400
+    assert client.post("/api/xml/hub-mit41-pdf", files={"arquivo": ("mit.pdf", b"nao e pdf")}).status_code == 400

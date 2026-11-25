@@ -54,11 +54,12 @@ O analista baixa em *Gerador de DataServer > Em lote > Baixar modelo Excel*, e o
 - Quem copia vira dono da cópia dele e pode alterar tudo (inclusive o cabeçalho); a ferramenta valida
   tudo de novo ao receber os dados.
 
-## 5. Conector RM (nenhuma configuração de console)
-O conector roda na máquina de cada analista e é baixado pela própria tela (`/conector-rm`), que
-monta o comando com o endereço do RM e a origem do site. Não há variável de ambiente, chave nem
+## 5. Conector (nenhuma configuração de console)
+O conector roda na máquina de cada analista e é baixado pelas próprias telas (botão "Como abrir o
+conector" no Evento Contábil Automático e no Cadastro da GUSUARIO), que montam o comando com as
+bases do RM (`--rm nome=endereço`, uma ou mais) e a origem do site. Não há variável de ambiente, chave nem
 segredo no servidor: o site não se conecta ao RM. Requisito na máquina do analista: Python 3.9+ e
-acesso de rede ao RM (VPN do cliente, se for o caso). Ver [GUIA_DO_ANALISTA.md](GUIA_DO_ANALISTA.md#6-conector-rm).
+acesso de rede ao RM (VPN do cliente, se for o caso). Ver [GUIA_DO_ANALISTA.md](GUIA_DO_ANALISTA.md#5-evento-contábil-automático-e-o-conector).
 
 ## 6. GitHub
 - [ ] O `.gitignore` já ignora `.env`, `.env.local` e `*.db`. Confira com `git status` que nenhum

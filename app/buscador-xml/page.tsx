@@ -376,10 +376,10 @@ Ele some das buscas de todo mundo. (A exclusão é registrada e pode ser desfeit
             grupo com base nos campos extraídos, sem decidir sozinho */}
         <div className="mt-8 rounded-lg border border-line bg-surface p-4">
           <h2 className="font-display text-sm font-bold text-ink">
-            Colar saída do Interpretador de MIT 41 (opcional)
+            Colar saída do Hub MIT 41 (opcional)
           </h2>
           <p className="mt-1 text-xs text-muted">
-            Cola aqui um trecho da resposta do Interpretador -- a ferramenta sugere
+            Cola aqui o texto do botão &quot;Copiar para o Buscador de XML&quot; do Hub MIT 41 -- a ferramenta sugere
             o grupo de movimento com base nos campos extraídos. Você
             confirma antes de usar.
           </p>

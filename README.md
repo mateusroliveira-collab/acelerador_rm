@@ -26,18 +26,17 @@ cadastros no RM.
 
 | # | Tela | Para quê | Guia |
 |---|---|---|---|
-| 01 | **Interpretador de MIT 41** (`/pre-processador-mit41`) | Organiza o PDF bruto da MIT em subprocessos (AS IS / TO BE / GAP) | [guia](docs/GUIA_DO_ANALISTA.md#1-interpretador-de-mit-41) |
+| 01 | **Hub MIT 41** (`/hub-mit41`) | Lê a MIT 041 uma vez: subprocessos (AS IS / TO BE / GAP) e cruzamento com a biblioteca de XMLs (pronto, ajustar, ficha do que criar) | [guia](docs/GUIA_DO_ANALISTA.md#1-hub-mit-41) |
 | 02 | **Buscador de XML** (`/buscador-xml`) | Acha XML de tipo de movimento, mostra a **regra de negócio** dele e baixa higienizado | [guia](docs/GUIA_DO_ANALISTA.md#2-buscador-de-xml) |
 | 03 | **Validador de CNAB** (`/validador-cnab`) | Valida CNAB 240/400 e registro online (BB e Caixa), apontando linha, posição e onde corrigir | [guia](docs/GUIA_DO_ANALISTA.md#3-validador-de-cnab-e-registro-online) |
-| 04 | **Gerador de DataServer** (`/gerador-dataserver`) | Planilha-modelo para o cliente, validação em lote e geração do JSON/XML para o RM | [guia](docs/GUIA_DO_ANALISTA.md#4-gerador-de-dataserver) |
-| 05 | **Análise da MIT 41** (`/analise-mit41`) | Cruza a MIT inteira com a biblioteca de XMLs: o que já existe, o que ajustar, ficha do que criar | [guia](docs/GUIA_DO_ANALISTA.md#5-análise-da-mit-41) |
-| 06 | **Conector RM** (`/conector-rm`) | GET/POST/PUT/DELETE no RM (REST DataServer), como um Postman simplificado | [guia](docs/GUIA_DO_ANALISTA.md#6-conector-rm) |
+| 04 | **Cadastro da GUSUARIO** (`/gerador-dataserver`) | Planilha-modelo para o cliente, validação em lote, JSON no formato do GET e envio ao RM com um clique | [guia](docs/GUIA_DO_ANALISTA.md#4-cadastro-da-gusuario) |
+| 05 | **Evento Contábil Automático** (`/evento-contabil-automatico`) | Postman facilitado: puxa eventos contábeis de uma base, junta arquivos JSON e envia para outra | [guia](docs/GUIA_DO_ANALISTA.md#5-evento-contábil-automático-e-o-conector) |
 | — | **Planilha-modelo** (`/planilha-modelo`) | Página pública para o **cliente** baixar a planilha de cadastro | [guia](docs/PLANILHA_MODELO.md) |
 
 Fluxo típico de uma implantação de Compras/Estoque/Faturamento:
 
 ```
-MIT 41 (PDF) ──► Análise da MIT 41 ──► fichas: pronto / ajustar / criar
+MIT 41 (PDF) ──► Hub MIT 41 ──► fichas: pronto / ajustar / criar
                                          │
                                          ▼
                       Buscador de XML (regra de negócio + XML higienizado)
@@ -45,10 +44,13 @@ MIT 41 (PDF) ──► Análise da MIT 41 ──► fichas: pronto / ajustar / c
                                          ▼
                               parametrização no RM
 
-Cadastros: planilha-modelo ──► cliente preenche ──► Gerador de DataServer (valida)
+Cadastros: planilha-modelo ──► cliente preenche ──► Cadastro da GUSUARIO (valida)
                                                        │
                                                        ▼
-                                     Conector RM (na máquina do analista) ──► RM
+                                     conector (na máquina do analista) ──► RM
+
+Eventos contábeis: base de origem ──GET──► Evento Contábil Automático ──POST──► base de destino
+                                         ▲ (+ arquivos .json)
 ```
 
 ---

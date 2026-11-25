@@ -83,6 +83,8 @@ class Modulo:
     campos_saida: tuple[str, ...] = field(default_factory=tuple)
     # (payload) -> valor do "id" do GET (a chave primária do registro); None = sem "id".
     id_do_registro: Callable[[dict], Any] | None = None
+    # Chaves do GET que nunca vão no envio (POST/PUT): id, credenciais, campos do RM.
+    campos_nao_enviar: tuple[str, ...] = field(default_factory=tuple)
 
     def para_dict(self, config: dict | None = None) -> dict:
         por_campo = {campo: chave for chave, campo in self.listas_config.items()}
@@ -96,6 +98,7 @@ class Modulo:
             "descricao": self.descricao, "operacoes": list(self.operacoes),
             "campos": campos,
             "nao_validado": list(self.nao_validado),
+            "campos_nao_enviar": list(self.campos_nao_enviar),
             "lote": True,
         }
 

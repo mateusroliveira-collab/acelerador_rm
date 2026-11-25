@@ -183,14 +183,19 @@ O servidor recebe a planilha, devolve o resultado e descarta. A senha só existe
 | Rota | Arquivo |
 |---|---|
 | `/` | `app/page.tsx` (cards das ferramentas) |
-| `/pre-processador-mit41` | `app/pre-processador-mit41/page.tsx` |
+| `/hub-mit41` | `app/hub-mit41/page.tsx` (Hub MIT 41: interpretador + análise; API `/api/xml/hub-mit41[-pdf]`) |
 | `/buscador-xml` | `app/buscador-xml/page.tsx` |
 | `/validador-cnab` | `app/validador-cnab/page.tsx` |
-| `/gerador-dataserver` | `app/gerador-dataserver/page.tsx` + `EnviarAoRm.tsx` |
+| `/gerador-dataserver` | `app/gerador-dataserver/page.tsx` (Cadastro da GUSUARIO) |
 | `/planilha-modelo` | `app/planilha-modelo/page.tsx` (pública, para o cliente) |
-| `/analise-mit41` | `app/analise-mit41/page.tsx` |
-| `/conector-rm` | `app/conector-rm/page.tsx` |
+| `/evento-contabil-automatico` | `app/evento-contabil-automatico/page.tsx` |
 
-Utilitários: `app/lib/download.ts` (download de blob), `app/lib/conector.ts` (porta e código de
-pareamento na sessão da aba — nunca a senha). Em desenvolvimento, `next.config.mjs` redireciona
+Endereços antigos redirecionados em `next.config.mjs`: `/pre-processador-mit41` e `/analise-mit41`
+→ `/hub-mit41`; `/conector-rm` → `/evento-contabil-automatico`.
+
+Componentes e utilitários: `app/components/PostmanRm.tsx` (Postman facilitado pelo conector, usado
+no Cadastro da GUSUARIO e no Evento Contábil Automático), `app/lib/registros.ts` (formato do GET do
+RM: ler envelope, limpar para envio, chave composta `$_$`, trocar coligada, explicar erros do RM),
+`app/lib/download.ts` (download de blob), `app/lib/conector.ts` (porta e código de pareamento na
+sessão da aba — nunca a senha). Em desenvolvimento, `next.config.mjs` redireciona
 `/api/*` para o uvicorn na porta 8000.

@@ -5,30 +5,71 @@ cada resultado mostra de onde veio (trecho da MIT, parâmetro do XML, linha e po
 Quando a ferramenta não tem certeza, ela diz — e a palavra final é sempre sua.
 
 Sumário:
-1. [Interpretador de MIT 41](#1-interpretador-de-mit-41)
+1. [Hub MIT 41](#1-hub-mit-41)
 2. [Buscador de XML](#2-buscador-de-xml)
 3. [Validador de CNAB e registro online](#3-validador-de-cnab-e-registro-online)
-4. [Gerador de DataServer](#4-gerador-de-dataserver)
-5. [Análise da MIT 41](#5-análise-da-mit-41)
-6. [Conector RM](#6-conector-rm)
-7. [Dúvidas frequentes](#7-dúvidas-frequentes)
+4. [Cadastro da GUSUARIO](#4-cadastro-da-gusuario)
+5. [Evento Contábil Automático e o conector](#5-evento-contábil-automático-e-o-conector)
+6. [Dúvidas frequentes](#6-dúvidas-frequentes)
 
 ---
 
-## 1. Interpretador de MIT 41
+## 1. Hub MIT 41
 
-**Tela:** `/pre-processador-mit41` · **Entrada:** PDF da MIT 41 (com texto selecionável, não escaneado).
+**Tela:** `/hub-mit41` (os endereços antigos `/pre-processador-mit41` e `/analise-mit41` levam para
+cá) · **Entrada:** PDF da MIT 41 (com texto selecionável), texto colado da MIT, ou a saída do
+interpretador (`[INICIO_MOVIMENTO]...`).
 
-1. Escolha o PDF e clique **Processar**.
-2. A tabela lista os subprocessos (ex.: `4.1.1.2 Requisição de Materiais`) com o processo relacionado,
-   AS IS, TO BE e GAP, e uma sugestão aproximada de grupo de movimento.
-3. **Copiar para a Ponte**: gera o texto no formato `[INICIO_MOVIMENTO]...` que o Buscador de XML lê.
+Junta o antigo Interpretador e a antiga Análise: o PDF é lido **uma vez** e a tela mostra duas abas.
 
-Limites: o índice de subprocessos é lido pela geometria das tabelas do PDF (mais confiável que o
-texto corrido). Documento escaneado (imagem) não tem texto e é recusado.
+- **Movimentos x biblioteca** (principal): status de cada movimento (pronto / ajustar / criar / sem
+  dados), ficha, XML-base e ajustes — detalhes abaixo. Ao abrir um movimento, o quadro **Na MIT**
+  mostra o subprocesso como está escrito: processo relacionado, **AS IS**, **TO BE** e **GAP** (o
+  GAP também aparece como etiqueta na lista). Se os sinais do texto apontarem para outro grupo,
+  aparece como "outra leitura de grupo".
+- **Todos os subprocessos**: a tabela do interpretador, inclusive o que não é movimento, com o
+  status da análise ao lado. *Ver ficha e XML-base* pula para o movimento.
+- **Copiar para o Buscador de XML**: o texto `[INICIO_MOVIMENTO]...` que a caixa do Buscador lê.
+- **Exportar** CSV ou relatório Markdown (já com processo relacionado, AS IS, TO BE e GAP).
 
-> Para a análise completa (o que cada movimento pede x XMLs da biblioteca), use a
-> [Análise da MIT 41](#5-análise-da-mit-41), que já faz este passo por dentro.
+O índice de subprocessos é lido pela geometria das tabelas do PDF (mais confiável que o texto
+corrido). Documento escaneado (imagem) não tem texto e é recusado.
+
+### Como a análise funciona
+
+
+Para cada movimento a ferramenta:
+1. lê o **TO BE** e o **GAP** (o AS IS descreve o processo atual e fica de fora);
+2. conclui o que a MIT pede — estoque (aumenta/diminui/transfere/nenhum), financeiro (a pagar/a
+   receber/nenhum), escrituração fiscal, natureza da nota, NF-e, NFS-e, orçamento, contabilização,
+   aprovação, geração de contrato — guardando **a frase da MIT** que justifica cada conclusão;
+3. define o grupo (1.1 a 4.1): pelo nome e, quando a MIT descreve o comportamento com clareza,
+   **o conteúdo vence o nome** (uma "Compra de Material" que escritura, dá entrada no estoque e gera
+   contas a pagar é 1.2);
+4. compara com a **regra de negócio** de cada XML da biblioteca (e das contribuições) e com o nome.
+
+Resultado por movimento:
+
+| Status | Significado | O que fazer |
+|---|---|---|
+| **Pronto** | Há XML sem divergência e com evidência (nome parecido ou 2+ regras batendo) | Baixe o XML-base higienizado |
+| **Ajustar** | Há XML-base, mas 1–2 parâmetros divergem, ou o XML certo está em outro grupo | Siga a tabela de ajustes |
+| **Criar** | Nada parecido; a ficha indica o XML mais próximo como base | Siga a ficha e confirme com o cliente |
+| **Sem dados** | Não é tipo de movimento (cadastro) ou a MIT não detalha | Verifique na MIT |
+
+A **ficha** de cada movimento traz: grupo, código sugerido (próximo livre na biblioteca — use a
+numeração do cliente), XML-base com botão de download higienizado, o que a MIT pede, a tabela de
+**ajustes** (MIT pede × XML faz × onde mexer, com a propriedade exata do XML e a frase da MIT), o
+que **confirmar com o cliente** (o que a MIT não diz) e o **fluxo** (de qual movimento vem, para
+qual segue).
+
+Exporte em **CSV** (abre no Excel) ou **relatório Markdown** para compartilhar.
+
+Cuidados:
+- Se a MIT se contradiz ("não gera financeiro" e depois "gera contas a pagar"), o item fica
+  **contraditório** e as duas frases aparecem — decida você.
+- "Onde mexer" usa a propriedade **exata** do XML; o nome da aba da parametrização foi deduzido.
+- A qualidade depende da MIT: quanto mais o TO BE descreve o comportamento, melhor o resultado.
 
 ---
 
@@ -94,9 +135,9 @@ art. 52 §1º).
 
 ---
 
-## 4. Gerador de DataServer
+## 4. Cadastro da GUSUARIO
 
-**Tela:** `/gerador-dataserver` · **Módulo disponível:** cadastro de usuário (`GlbUsuarioData`).
+**Tela:** `/gerador-dataserver` (Cadastro da GUSUARIO) · **DataServer:** `GlbUsuarioData`.
 
 ### Em lote (principal)
 1. Preencha **Cliente** (opcional): com cliente cadastrado, a lista de *Código de Acesso* vem com os
@@ -109,7 +150,8 @@ art. 52 §1º).
 4. Com erros: **Baixar planilha marcada** (células em vermelho com comentário e aba "Erros"), ou
    copie/baixe o relatório, e devolva ao cliente.
 5. Com registros válidos, escolha como carregar:
-   - **Enviar direto ao RM** (quadro do conector, ver [seção 6](#6-conector-rm)) — recomendado;
+   - **Enviar ao RM** — recomendado: o "Postman facilitado" (ver [seção 5](#5-evento-contábil-automático-e-o-conector))
+     já vem com os usuários no corpo; conecte, informe usuário/senha do RM e clique **Incluir**;
    - **JSONL + script PowerShell** (pede usuário/senha com `Get-Credential`);
    - **JSON (formato do GET)** — igual ao retorno do GET do RM (`messages`, `length`, `data`, com
      todas as chaves na mesma ordem; o que não foi preenchido sai `null`) — ou **XML** (formato
@@ -119,8 +161,18 @@ O envio ao RM (conector e JSONL) leva **um registro por chamada, só com os camp
 PUT, um `null` apagaria o valor que já está no RM.
 
 ### Formulário (um usuário)
-Preencha os campos e clique **Validar e gerar prévia**: a prévia sai no formato do GET; o
-**corpo do envio** (botão próprio) é o que vai no POST/PUT.
+Preencha os campos e clique **Validar e gerar prévia**: a prévia sai no formato do GET e o quadro
+**Enviar ao RM** já vem com o usuário. Para mandar por fora (curl, Postman), use **Baixar corpo do
+envio**.
+
+### Erro 0007 ("Falha ao ativar restrições... non-null, unique ou foreign-key")
+O RM recusou por uma restrição do banco. Causas comuns:
+1. **O usuário já existe** (ex.: `mestre`) e foi enviado como inclusão. O envio pela tela consulta
+   antes e **pula** quem já existe (ou **altera**, em *Opções de envio*).
+2. **Um código ligado não existe nessa base** — no cadastro de usuário, o `CODACESSO`.
+3. **O JSON do GET foi enviado inteiro num POST** (`messages`/`data`, com `id` e `null` em
+   credenciais e campos do RM). A tela separa os registros e manda um por chamada, sem `id`, sem
+   `null`, sem `SENHA` e sem campos controlados pelo RM.
 
 O que o gerador **nunca** faz: gerar senha ou campos controlados pelo RM. Teste de exemplo:
 `docs/exemplos/cadastro_usuarios_ficticio.xlsx` (30 usuários fictícios; esperado 27 válidos e 3 com
@@ -128,99 +180,81 @@ erro nas linhas 6, 12 e 20).
 
 ---
 
-## 5. Análise da MIT 41
+## 5. Evento Contábil Automático e o conector
 
-**Tela:** `/analise-mit41` · **Entrada:** PDF da MIT 41, texto colado da MIT, ou a saída do
-interpretador (`[INICIO_MOVIMENTO]...`).
-
-Para cada movimento a ferramenta:
-1. lê o **TO BE** e o **GAP** (o AS IS descreve o processo atual e fica de fora);
-2. conclui o que a MIT pede — estoque (aumenta/diminui/transfere/nenhum), financeiro (a pagar/a
-   receber/nenhum), escrituração fiscal, natureza da nota, NF-e, NFS-e, orçamento, contabilização,
-   aprovação, geração de contrato — guardando **a frase da MIT** que justifica cada conclusão;
-3. define o grupo (1.1 a 4.1): pelo nome e, quando a MIT descreve o comportamento com clareza,
-   **o conteúdo vence o nome** (uma "Compra de Material" que escritura, dá entrada no estoque e gera
-   contas a pagar é 1.2);
-4. compara com a **regra de negócio** de cada XML da biblioteca (e das contribuições) e com o nome.
-
-Resultado por movimento:
-
-| Status | Significado | O que fazer |
-|---|---|---|
-| **Pronto** | Há XML sem divergência e com evidência (nome parecido ou 2+ regras batendo) | Baixe o XML-base higienizado |
-| **Ajustar** | Há XML-base, mas 1–2 parâmetros divergem, ou o XML certo está em outro grupo | Siga a tabela de ajustes |
-| **Criar** | Nada parecido; a ficha indica o XML mais próximo como base | Siga a ficha e confirme com o cliente |
-| **Sem dados** | Não é tipo de movimento (cadastro) ou a MIT não detalha | Verifique na MIT |
-
-A **ficha** de cada movimento traz: grupo, código sugerido (próximo livre na biblioteca — use a
-numeração do cliente), XML-base com botão de download higienizado, o que a MIT pede, a tabela de
-**ajustes** (MIT pede × XML faz × onde mexer, com a propriedade exata do XML e a frase da MIT), o
-que **confirmar com o cliente** (o que a MIT não diz) e o **fluxo** (de qual movimento vem, para
-qual segue).
-
-Exporte em **CSV** (abre no Excel) ou **relatório Markdown** para compartilhar.
-
-Cuidados:
-- Se a MIT se contradiz ("não gera financeiro" e depois "gera contas a pagar"), o item fica
-  **contraditório** e as duas frases aparecem — decida você.
-- "Onde mexer" usa a propriedade **exata** do XML; o nome da aba da parametrização foi deduzido.
-- A qualidade depende da MIT: quanto mais o TO BE descreve o comportamento, melhor o resultado.
-
----
-
-## 6. Conector RM
-
-**Tela:** `/conector-rm` · Consulta, inclui, altera e exclui registros no RM pelo **REST
-DataServer**, a partir da **sua máquina**.
+**Tela:** `/evento-contabil-automatico` (o endereço antigo `/conector-rm` leva para cá) · Um
+**Postman facilitado** para o REST DataServer, focado nos eventos contábeis: consulta numa base,
+junta com arquivos JSON de outros lugares e envia para a base que você quiser — sempre no formato
+JSON do GET do RM. O mesmo quadro aparece no Cadastro da GUSUARIO.
 
 Por que um conector: o site roda na nuvem e não enxerga o RM do cliente (rede interna/VPN). O
 conector é um pequeno programa Python que roda na sua máquina e repassa as chamadas.
 
-### Primeira vez
+### Primeira vez (botão "Como abrir o conector")
 1. Tenha **Python 3.9+** instalado (nada mais para instalar).
-2. Na tela, informe o **endereço do RM** (ex.: `https://rm.cliente.com.br:8051`), a porta local
-   (padrão 8765) e marque *certificado próprio* se o RM usar HTTPS autoassinado.
+2. Informe as **bases** do RM, uma por linha, `nome=endereço` (ou só o endereço, se for uma):
+   ```
+   homolog=https://rm-homolog.cliente.com.br:8051
+   producao=https://rm.cliente.com.br:8051
+   ```
 3. **Baixar conector_rm.py** e **Copiar comando**. Rode o comando na pasta do arquivo, por exemplo:
    ```
-   python conector_rm.py --rm https://rm.cliente.com.br:8051 --origem https://acelerador-rm.vercel.app
+   python conector_rm.py --rm homolog=https://rm-homolog:8051 --rm producao=https://rm:8051 --origem https://acelerador-rm.vercel.app
    ```
-4. A janela mostra o **código de pareamento** (ex.: `7F3A91C2`). Deixe-a aberta.
+4. A janela mostra o **código de pareamento** (ex.: `7F3A91C2`, muda a cada abertura). Deixe-a aberta.
 5. Na tela, cole o código e clique **Conectar**. Se o navegador pedir permissão para acessar a
-   **rede local**, permita.
+   **rede local**, permita. Informe usuário e senha do RM (ficam só na memória da aba).
 
-### Fazendo chamadas
-- Informe usuário e senha do RM (ficam só na memória da aba; somem ao recarregar).
-- Escolha o método, o DataServer e a chave. O caminho é montado sozinho
-  (`/rmsrestdataserver/rest/GlbUsuarioData/<chave>`) e pode ser editado.
-- **GET** aceita parâmetros (ex.: `filter=CODUSUARIO = 'maria.silva'`); **POST/PUT** levam corpo JSON;
-  **DELETE** pede confirmação.
-- A resposta mostra status HTTP, tempo, o JSON e, em caso de erro, **como corrigir**. O histórico da
-  sessão guarda as últimas 15 chamadas (sem senha) com **Repetir**.
+> Conector antigo (1.0): funciona com uma base só e sem "se já existir". A tela avisa; baixe o novo.
 
-### Enviar o lote do Gerador de DataServer
-No resultado do lote, o quadro **Enviar direto ao RM** usa a mesma conexão. Ele começa com
-**"Enviar só o primeiro registro (teste)"** marcado: confira o registro no RM e o próximo clique
-envia os demais, sem reenviar o primeiro. O resultado mostra cada registro com o HTTP e a mensagem do RM.
+### Eventos contábeis: puxar, juntar e enviar
+1. **DataServer**: informe o nome do DataServer de eventos contábeis (o que aparece em
+   `/rmsrestdataserver/rest/<NOME>`). Fica lembrado no navegador. O campo chave já vem
+   `CODCOLIGADA,CODEVENTO` (no RM a chave vira `1$_$1`).
+2. **Puxe**: método **GET**, escolha a base de origem ("de: ..."). Na aba *Parâmetros*, use filtro
+   (ex.: `filter=CODCOLIGADA = 1`) e marque **Trazer completo** para vir com os itens de débito e
+   crédito (`TITMEVCDB`/`TITMEVCCR`; um GET por evento). Para um só, digite a chave (`1$_$1`).
+3. **Usar como corpo** (ou **Anexar ao corpo**). **Anexar arquivos .json** junta eventos de outros
+   lugares (envelope do GET, lista ou um registro). Dá para editar o JSON à mão.
+4. Coligada diferente no destino? **Trocar para a coligada** muda `CODCOLIGADA` no evento e nos itens
+   (e, se marcado, `CODCOLCONTA`), inclusive `id`/`parent_id`.
+5. **Envie**: método **POST**, base de destino ("para: ..."). Marque/desmarque os registros na lista.
+
+### Opções de envio (aba "Opções de envio")
+- **Se já existir** (só POST): *pular* (padrão), *alterar* (manda PUT) ou *enviar POST mesmo assim*.
+  A tela consulta cada registro pela chave antes.
+- **Enviar só o primeiro (teste)** vem marcado. O que dá certo sai da seleção: o próximo clique manda
+  só o restante.
+- **Não enviar campos vazios (null)** vem marcado (num PUT, `null` apaga o valor no RM). `id` e
+  `parent_id` do GET não são enviados (o RM monta a chave pelos campos).
+- *Ver como o primeiro registro vai ser enviado* mostra o corpo exato da chamada.
+
+O resultado mostra cada registro com a ação (incluído / alterado / pulado), o HTTP e a mensagem do
+RM — com a explicação dos códigos conhecidos (ex.: **0007**: registro já existe, código ligado
+inexistente na base ou campo obrigatório faltando).
 
 ### Erros comuns
 | Mensagem | Causa provável | Como corrigir |
 |---|---|---|
 | Não encontrei o conector | Janela fechada, porta diferente ou permissão de rede local negada | Abra o conector, confira a porta, permita o acesso |
+| Código de pareamento inválido | O conector foi reaberto (o código muda) | Copie o código novo da janela |
 | Origem não autorizada | Conector aberto sem `--origem` igual ao site | Feche e abra com o comando copiado da tela |
+| Base desconhecida | A base não foi aberta no conector | Reabra o conector com `--rm nome=endereço` para ela |
 | Certificado não confiável | RM com HTTPS autoassinado | Reabra com `--aceitar-certificado-autoassinado` |
 | RM recusou a conexão / não encontrei o endereço | Porta errada, serviço parado ou VPN desligada | Confira `--rm`, a VPN e o serviço do RM |
 | HTTP 401 / 403 | Senha errada / usuário sem permissão no DataServer | Confira usuário e perfil de acesso no RM |
+| [0007] Falha ao ativar restrições | Já existe, código ligado inexistente na base ou campo obrigatório | Use "se já existir: pular/alterar"; confira contas, fórmulas, coligada |
 
 Segurança: o conector só escuta na própria máquina (`127.0.0.1`), exige o código de pareamento, só
-aceita a origem do site, só chama o RM informado e só em `/rmsrestdataserver/` e `/api/`. Senha,
-usuário e conteúdo das chamadas **não** aparecem no log da janela.
+aceita a origem do site, só chama as bases abertas com `--rm` e só em `/rmsrestdataserver/` e
+`/api/`. Senha, usuário e conteúdo das chamadas **não** aparecem no log da janela.
 
-> **Use homologação primeiro.** O formato exato das URLs do REST do RM (chave na URL, filtros) foi
+> **Use homologação primeiro.** O formato das URLs do REST do RM (chave na URL, filtros) foi
 > deduzido de exemplos e deve ser confirmado na primeira chamada em cada cliente.
 
 ---
 
-## 7. Dúvidas frequentes
+## 6. Dúvidas frequentes
 
 **A ferramenta usa IA?** Não. São regras; cada conclusão mostra a evidência.
 

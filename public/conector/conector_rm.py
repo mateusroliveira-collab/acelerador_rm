@@ -12,8 +12,9 @@ Segurança:
   - exige o CÓDIGO DE PAREAMENTO mostrado ao abrir (outro site aberto no
     navegador não consegue usá-lo);
   - só aceita chamadas do navegador vindas das origens informadas (--origem);
-  - só chama o endereço do RM informado ao abrir (--rm) e só nos caminhos
-    permitidos (/rmsrestdataserver/ e /api/): não é um proxy aberto;
+  - só chama os endereços de RM informados ao abrir (--rm, uma ou mais
+    bases com nome) e só nos caminhos permitidos (/rmsrestdataserver/ e
+    /api/): não é um proxy aberto;
   - usuário e senha chegam a cada chamada, vão direto para o RM e NUNCA são
     gravados nem aparecem no log. O corpo das chamadas também não é logado.
 
@@ -21,9 +22,12 @@ Requisitos: Python 3.9+ (só biblioteca padrão, nada para instalar).
 
 Uso:
   python conector_rm.py --rm https://rm.cliente.com.br:8051 --origem https://SEU-APP.vercel.app
+  Várias bases (a tela escolhe origem e destino pelo nome):
+  python conector_rm.py --rm homolog=https://rm-hml:8051 --rm producao=https://rm:8051 --origem https://SEU-APP.vercel.app
   Opções: --porta 8765   --aceitar-certificado-autoassinado   --timeout 60
 
-Deixe a janela aberta enquanto usa a tela "Conector RM". Ctrl+C encerra.
+Deixe a janela aberta enquanto usa as telas do Acelerador (Evento Contábil
+Automático, Cadastro da GUSUARIO). Ctrl+C encerra.
 """
 
 from __future__ import annotations
@@ -42,24 +46,41 @@ import urllib.request
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSAO = "1.0.0"
+VERSAO = "1.1.0"
 PORTA_PADRAO = 8765
 PREFIXOS_PERMITIDOS = ("/rmsrestdataserver/", "/api/")
 METODOS = ("GET", "POST", "PUT", "DELETE")
 MAX_CORPO_ENTRADA = 5_000_000  # bytes que a tela pode mandar numa chamada
 MAX_CORPO_RESPOSTA = 2_000_000  # bytes da resposta do RM devolvidos à tela
 MAX_REGISTROS_LOTE = 500
+SEPARADOR_CHAVE = "$_$"  # chave composta no REST do RM (ex.: CODCOLIGADA$_$CODEVENTO = "1$_$1")
+SE_EXISTIR = ("erro", "pular", "alterar")
 
 
 @dataclass
 class Config:
-    rm: str  # https://host:porta (sem caminho)
+    rm: str  # https://host:porta (sem caminho) -- a base padrão
     token: str
     origens: tuple[str, ...] = ()
     aceitar_autoassinado: bool = False
     timeout: float = 60.0
     prefixos: tuple[str, ...] = PREFIXOS_PERMITIDOS
     log: list = field(default_factory=list)  # só para testes; o console recebe o mesmo texto
+    # nome -> https://host:porta. Vazio = só a base `rm` (nome "principal").
+    bases: dict = field(default_factory=dict)
+
+    def lista_bases(self) -> dict:
+        return dict(self.bases) if self.bases else {"principal": self.rm}
+
+    def url_da_base(self, nome: str | None) -> str:
+        """Endereço da base pelo nome (vazio = padrão). Só bases abertas no conector."""
+        if not nome:
+            return self.rm
+        bases = self.lista_bases()
+        if nome not in bases:
+            raise ErroConector(400, f"Base desconhecida: {nome}.",
+                               "Use uma das bases abertas no conector: " + ", ".join(bases) + ".")
+        return bases[nome]
 
 
 class ErroConector(Exception):
@@ -86,8 +107,8 @@ def normalizar_rm(url: str) -> str:
     return f"{p.scheme}://{p.netloc}"
 
 
-def montar_url(cfg: Config, caminho: str, parametros: dict | None = None) -> str:
-    """Junta o RM configurado + caminho permitido + parâmetros. Nunca troca o host."""
+def montar_url(cfg: Config, caminho: str, parametros: dict | None = None, base: str | None = None) -> str:
+    """Junta o RM configurado + caminho permitido + parâmetros. Só usa hosts abertos no conector."""
     caminho = (caminho or "").strip()
     if not caminho.startswith("/") or caminho.startswith("//") or "://" in caminho or "\\" in caminho:
         raise ErroConector(400, "Caminho inválido.", "Use um caminho do RM começando com /, ex.: /rmsrestdataserver/rest/GlbUsuarioData")
@@ -102,7 +123,7 @@ def montar_url(cfg: Config, caminho: str, parametros: dict | None = None) -> str
     for chave, valor in (parametros or {}).items():
         if valor not in (None, ""):
             query.append((str(chave), str(valor)))
-    url = cfg.rm + urllib.parse.quote(partes.path, safe="/;:@=,$-_.!~*'()%")
+    url = cfg.url_da_base(base) + urllib.parse.quote(partes.path, safe="/;:@=,$-_.!~*'()%")
     # Espaço vira %20 (não "+"): mais seguro com o filtro do REST do RM.
     return url + ("?" + urllib.parse.urlencode(query, quote_via=urllib.parse.quote) if query else "")
 
@@ -110,8 +131,8 @@ def montar_url(cfg: Config, caminho: str, parametros: dict | None = None) -> str
 # --- Chamada ao RM ------------------------------------------------------------
 
 
-def _contexto_ssl(cfg: Config) -> ssl.SSLContext | None:
-    if not cfg.rm.startswith("https://"):
+def _contexto_ssl(cfg: Config, url: str) -> ssl.SSLContext | None:
+    if not url.startswith("https://"):
         return None
     if cfg.aceitar_autoassinado:
         ctx = ssl.create_default_context()
@@ -166,13 +187,13 @@ DICAS_HTTP = {
 
 
 def chamar_rm(cfg: Config, metodo: str, caminho: str, usuario: str, senha: str,
-              corpo: object = None, parametros: dict | None = None) -> dict:
+              corpo: object = None, parametros: dict | None = None, base: str | None = None) -> dict:
     metodo = (metodo or "").upper()
     if metodo not in METODOS:
         raise ErroConector(400, f"Método inválido: {metodo}.", "Use GET, POST, PUT ou DELETE.")
     if not usuario or senha is None:
         raise ErroConector(400, "Informe usuário e senha do RM.", "Eles vão direto para o RM e não são guardados.")
-    url = montar_url(cfg, caminho, parametros)
+    url = montar_url(cfg, caminho, parametros, base)
 
     dados = None
     cabecalhos = {
@@ -186,7 +207,7 @@ def chamar_rm(cfg: Config, metodo: str, caminho: str, usuario: str, senha: str,
     req = urllib.request.Request(url, data=dados, method=metodo, headers=cabecalhos)
     inicio = time.monotonic()
     try:
-        with urllib.request.urlopen(req, timeout=cfg.timeout, context=_contexto_ssl(cfg)) as resp:
+        with urllib.request.urlopen(req, timeout=cfg.timeout, context=_contexto_ssl(cfg, url)) as resp:
             status, bruto, tipo = resp.status, resp.read(MAX_CORPO_RESPOSTA + 1), resp.headers.get("Content-Type", "")
     except urllib.error.HTTPError as e:
         status, bruto, tipo = e.code, e.read(MAX_CORPO_RESPOSTA + 1), e.headers.get("Content-Type", "") if e.headers else ""
@@ -195,7 +216,8 @@ def chamar_rm(cfg: Config, metodo: str, caminho: str, usuario: str, senha: str,
     ms = int((time.monotonic() - inicio) * 1000)
 
     corpo_resp, truncado = _ler_corpo(bruto)
-    _log(cfg, f"{metodo} {urllib.parse.urlsplit(url).path} -> {status} ({ms} ms)")
+    rotulo_base = f"[{base}] " if base else ""
+    _log(cfg, f"{rotulo_base}{metodo} {urllib.parse.urlsplit(url).path} -> {status} ({ms} ms)")
     return {
         "ok": 200 <= status < 300,
         "status": status,
@@ -207,42 +229,83 @@ def chamar_rm(cfg: Config, metodo: str, caminho: str, usuario: str, senha: str,
     }
 
 
+def chave_do_registro(reg: object, campo_chave: str | None) -> str:
+    """
+    Valor da chave para a URL. campo_chave pode ser composto ("CODCOLIGADA,CODEVENTO"):
+    os valores são unidos com $_$, como o RM faz ("1$_$1"). Falta algum -> "".
+    """
+    if not isinstance(reg, dict) or not campo_chave:
+        return ""
+    valores = []
+    for campo in (c.strip() for c in campo_chave.split(",") if c.strip()):
+        v = reg.get(campo)
+        if v is None or str(v).strip() == "":
+            return ""
+        valores.append(str(v).strip())
+    return SEPARADOR_CHAVE.join(valores)
+
+
+def _existe(resposta: dict) -> bool:
+    """GET pela chave achou o registro? (o RM devolve {"data": {...}} ou {"data": [...]})"""
+    if not resposta.get("ok"):
+        return False
+    corpo = resposta.get("corpo")
+    if isinstance(corpo, dict) and "data" in corpo:
+        return bool(corpo["data"])
+    return bool(corpo)
+
+
 def enviar_lote(cfg: Config, metodo: str, caminho: str, registros: list, usuario: str, senha: str,
-                campo_chave: str | None = None, parar_no_erro: bool = False) -> dict:
+                campo_chave: str | None = None, parar_no_erro: bool = False,
+                base: str | None = None, se_existir: str = "erro") -> dict:
     """
     Um registro por chamada (o REST DataServer recebe um por vez). PUT usa
-    caminho/<valor do campo_chave>. Devolve o resultado de cada registro.
+    caminho/<chave>. Em POST, `se_existir` decide o que fazer com registro que
+    já está no RM (consulta antes pela chave): "erro" (manda o POST mesmo),
+    "pular" ou "alterar" (manda PUT). Devolve o resultado de cada registro.
     """
     metodo = (metodo or "").upper()
+    se_existir = se_existir or "erro"
     if metodo not in ("POST", "PUT"):
         raise ErroConector(400, "Lote só com POST (incluir) ou PUT (alterar).")
+    if se_existir not in SE_EXISTIR:
+        raise ErroConector(400, f"Opção inválida para registro existente: {se_existir}.")
     if not isinstance(registros, list) or not registros:
         raise ErroConector(400, "Nenhum registro no lote.")
     if len(registros) > MAX_REGISTROS_LOTE:
         raise ErroConector(400, f"Lote com mais de {MAX_REGISTROS_LOTE} registros.", "Divida o arquivo em partes.")
-    if metodo == "PUT" and not campo_chave:
-        raise ErroConector(400, "Para alterar em lote, informe o campo chave (ex.: CODUSUARIO).")
+    precisa_chave = metodo == "PUT" or se_existir != "erro"
+    if precisa_chave and not campo_chave:
+        raise ErroConector(400, "Informe o campo chave (ex.: CODUSUARIO ou CODCOLIGADA,CODEVENTO).")
+    cfg.url_da_base(base)  # base desconhecida: recusa antes de chamar qualquer coisa
 
     resultados = []
+    raiz = caminho.rstrip("/")
     for i, reg in enumerate(registros, start=1):
-        alvo = caminho.rstrip("/")
-        chave = None
-        if metodo == "PUT":
-            chave = str((reg or {}).get(campo_chave, "")).strip() if isinstance(reg, dict) else ""
-            if not chave:
-                resultados.append({"indice": i, "chave": None, "ok": False, "status": None,
-                                   "erro": f"Registro sem {campo_chave}."})
-                if parar_no_erro:
-                    break
-                continue
-            alvo = f"{alvo}/{urllib.parse.quote(chave, safe='')}"
+        chave = chave_do_registro(reg, campo_chave) if campo_chave else ""
+        if precisa_chave and not chave:
+            resultados.append({"indice": i, "chave": None, "ok": False, "status": None, "acao": None,
+                               "erro": f"Registro sem {campo_chave}."})
+            if parar_no_erro:
+                break
+            continue
+        url_chave = f"{raiz}/{urllib.parse.quote(chave, safe='$_')}" if chave else raiz
         try:
-            r = chamar_rm(cfg, metodo, alvo, usuario, senha, corpo=reg)
-            item = {"indice": i, "chave": chave, "ok": r["ok"], "status": r["status"], "resposta": r["corpo"],
-                    "dica": r["dica"]}
+            metodo_reg, acao = metodo, ("alterado" if metodo == "PUT" else "incluido")
+            if metodo == "POST" and se_existir != "erro":
+                if _existe(chamar_rm(cfg, "GET", url_chave, usuario, senha, base=base)):
+                    if se_existir == "pular":
+                        resultados.append({"indice": i, "chave": chave, "ok": True, "status": None,
+                                           "acao": "pulado", "resposta": "Já existe no RM: não foi enviado."})
+                        continue
+                    metodo_reg, acao = "PUT", "alterado"
+            r = chamar_rm(cfg, metodo_reg, url_chave if metodo_reg == "PUT" else raiz, usuario, senha,
+                          corpo=reg, base=base)
+            item = {"indice": i, "chave": chave or None, "ok": r["ok"], "status": r["status"],
+                    "acao": acao if r["ok"] else None, "resposta": r["corpo"], "dica": r["dica"]}
         except ErroConector as e:
-            item = {"indice": i, "chave": chave, "ok": False, "status": None, "erro": e.mensagem,
-                    "como_corrigir": e.como_corrigir}
+            item = {"indice": i, "chave": chave or None, "ok": False, "status": None, "acao": None,
+                    "erro": e.mensagem, "como_corrigir": e.como_corrigir}
             resultados.append(item)
             if e.status in (502, 504):  # RM fora do ar: não adianta continuar
                 break
@@ -255,7 +318,8 @@ def enviar_lote(cfg: Config, metodo: str, caminho: str, registros: list, usuario
     enviados = len(resultados)
     sucesso = sum(1 for r in resultados if r["ok"])
     return {"total": len(registros), "enviados": enviados, "sucesso": sucesso,
-            "falhas": enviados - sucesso, "nao_enviados": len(registros) - enviados, "resultados": resultados}
+            "falhas": enviados - sucesso, "nao_enviados": len(registros) - enviados,
+            "pulados": sum(1 for r in resultados if r.get("acao") == "pulado"), "resultados": resultados}
 
 
 # --- Servidor local -----------------------------------------------------------
@@ -325,8 +389,9 @@ def criar_servidor(cfg: Config, porta: int = PORTA_PADRAO) -> ThreadingHTTPServe
                 return self._responder(404, {"ok": False, "erro": "Rota inexistente."})
             if not self._checar_acesso():
                 return
+            bases = [{"nome": n, "rm": u} for n, u in cfg.lista_bases().items()]
             self._responder(200, {"ok": True, "conector": True, "versao": VERSAO, "rm": cfg.rm,
-                                  "aceita_autoassinado": cfg.aceitar_autoassinado})
+                                  "bases": bases, "aceita_autoassinado": cfg.aceitar_autoassinado})
 
         def do_POST(self):  # noqa: N802
             rota = self.path.split("?")[0]
@@ -349,11 +414,13 @@ def criar_servidor(cfg: Config, porta: int = PORTA_PADRAO) -> ThreadingHTTPServe
             try:
                 if rota == "/rm":
                     r = chamar_rm(cfg, pedido.get("metodo"), pedido.get("caminho"), pedido.get("usuario"),
-                                  pedido.get("senha"), pedido.get("corpo"), pedido.get("parametros"))
+                                  pedido.get("senha"), pedido.get("corpo"), pedido.get("parametros"),
+                                  pedido.get("base"))
                 else:
                     r = enviar_lote(cfg, pedido.get("metodo"), pedido.get("caminho"), pedido.get("registros"),
                                     pedido.get("usuario"), pedido.get("senha"), pedido.get("campo_chave"),
-                                    bool(pedido.get("parar_no_erro")))
+                                    bool(pedido.get("parar_no_erro")), pedido.get("base"),
+                                    pedido.get("se_existir") or "erro")
                     _log(cfg, f"lote {pedido.get('metodo')}: {r['sucesso']}/{r['total']} com sucesso")
             except ErroConector as e:
                 _log(cfg, f"recusado: {e.mensagem}")
@@ -363,9 +430,25 @@ def criar_servidor(cfg: Config, porta: int = PORTA_PADRAO) -> ThreadingHTTPServe
     return ThreadingHTTPServer(("127.0.0.1", porta), Handler)
 
 
+def ler_bases(valores: list[str]) -> dict:
+    """["homolog=https://a:1", "https://b:2"] -> {"homolog": "https://a:1", "principal": "https://b:2"}."""
+    bases: dict = {}
+    for i, valor in enumerate(valores, start=1):
+        nome, _, url = valor.partition("=") if "=" in valor.split("://")[0] else ("", "", valor)
+        nome = nome.strip() or ("principal" if len(valores) == 1 else f"base{i}")
+        if not nome.replace("-", "").replace("_", "").isalnum():
+            raise ValueError(f"Nome de base inválido: {nome!r} (use letras, números, - e _).")
+        if nome in bases:
+            raise ValueError(f"Base repetida: {nome}.")
+        bases[nome] = normalizar_rm(url)
+    return bases
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Conector local entre o Acelerador e o RM.")
-    ap.add_argument("--rm", required=True, help="Endereço do RM, ex.: https://rm.cliente.com.br:8051")
+    ap.add_argument("--rm", required=True, action="append",
+                    help="Endereço do RM, ex.: https://rm.cliente.com.br:8051. Para várias bases, repita com "
+                         "nome=endereço: --rm homolog=https://rm-hml:8051 --rm producao=https://rm:8051")
     ap.add_argument("--origem", action="append", default=[],
                     help="Endereço do site do Acelerador (pode repetir). Ex.: https://SEU-APP.vercel.app")
     ap.add_argument("--porta", type=int, default=PORTA_PADRAO)
@@ -375,13 +458,13 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
 
     try:
-        rm = normalizar_rm(a.rm)
+        bases = ler_bases(a.rm)
     except ValueError as e:
         print(f"Erro: {e}", file=sys.stderr)
         return 2
     origens = tuple(o.rstrip("/") for o in a.origem) or ("http://localhost:3000",)
-    cfg = Config(rm=rm, token=secrets.token_hex(4).upper(), origens=origens,
-                 aceitar_autoassinado=a.aceitar_certificado_autoassinado, timeout=a.timeout)
+    cfg = Config(rm=next(iter(bases.values())), token=secrets.token_hex(4).upper(), origens=origens,
+                 aceitar_autoassinado=a.aceitar_certificado_autoassinado, timeout=a.timeout, bases=bases)
     try:
         servidor = criar_servidor(cfg, a.porta)
     except OSError:
@@ -389,7 +472,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     print(f"Conector RM {VERSAO}")
-    print(f"  RM:      {cfg.rm}")
+    for nome, url in cfg.lista_bases().items():
+        print(f"  Base:    {nome} = {url}")
     print(f"  Site:    {', '.join(cfg.origens)}")
     print(f"  Porta:   {a.porta} (só esta máquina)")
     if cfg.aceitar_autoassinado:

@@ -50,6 +50,15 @@ que ainda falta validar. Atualizado em 19/11/2026. Os hashes entre parênteses s
 | Tela **Conector RM** (Postman simplificado) | `b23be4a` |
 | Envio do lote do Gerador direto ao RM pelo conector | `ce59855` |
 
+### Fase 5 — Formato do GET, Postman facilitado e Hub MIT 41 (25/11/2026)
+| Entrega | Commit |
+|---|---|
+| Planilha e JSON do cadastro de usuário no **formato do GET** (nomes técnicos, ordem do RM, 1/0 e T/F, envelope `messages/length/data`) | `44a9f86` |
+| Gerador renomeado para **Cadastro da GUSUARIO**, com envio ao RM pelo Postman facilitado | (esta fase) |
+| Conector 1.1: **várias bases** com nome, chave composta `$_$`, "se já existir: pular/alterar" | (esta fase) |
+| Tela **Evento Contábil Automático** (substitui o Conector RM): puxar, anexar JSON, trocar coligada, enviar | (esta fase) |
+| **Hub MIT 41**: Interpretador + Análise numa tela, PDF lido uma vez | (esta fase) |
+
 ## 2. Decisões
 
 | Data | Decisão | Por quê | Alternativa descartada |
@@ -65,6 +74,10 @@ que ainda falta validar. Atualizado em 19/11/2026. Os hashes entre parênteses s
 | 19/11 | Índice de regras dos XMLs pré-calculado (`data/regras_xml.json`) | Ler 35 MB por requisição custaria ~1 s de cold start | Ler os XMLs a cada chamada |
 | 19/11 | No cruzamento, o conteúdo da MIT vence o nome quando 2+ dimensões essenciais são conhecidas | "Compra de Material" que escritura e gera contas a pagar é 1.2, não 1.1 | Grupo só pelo nome |
 | 19/11 | Frente CNAB adiada | Precisa de arquivos reais de BB e Caixa para testar | Evoluir sem amostras |
+| 25/11 | JSON de saída no formato do GET, mas o **envio** leva um registro por chamada, sem `id`, sem `null`, sem credenciais | POST com o envelope do GET deu erro 0007 (restrição); num PUT, `null` apaga o valor no RM | Enviar o JSON do GET como está |
+| 25/11 | Antes de um POST, consultar a chave e pular (padrão) ou alterar o que já existe | Evita o 0007 de "já existe" (ex.: `mestre`) | Deixar o RM recusar |
+| 25/11 | Várias bases num conector só, por nome (`--rm nome=endereço`) | Puxar de uma base e enviar para outra sem trocar de conector; continua sem ser proxy aberto | Um conector por base |
+| 25/11 | Nome do DataServer de eventos contábeis editável e lembrado no navegador | Não estava confirmado; a tela serve para qualquer DataServer | Fixar um nome deduzido |
 
 ## 3. Pendências
 
@@ -72,6 +85,8 @@ que ainda falta validar. Atualizado em 19/11/2026. Os hashes entre parênteses s
 - **REST do RM**: formato das URLs (`/rmsrestdataserver/rest/<DataServer>/<chave>`), chave composta,
   filtro (`filter=`), comportamento do PUT e autenticação Basic. Deduzidos do JSON de exemplo; o
   caminho é editável na tela.
+- **Eventos contábeis**: nome do DataServer, se o POST aceita as tabelas filhas (`TITMEVCDB`/`TITMEVCCR`)
+  no mesmo corpo e o comportamento do GET por chave inexistente (usado no "se já existir").
 - **GlbUsuarioData**: formato de `OBRIGAALTERARSENHA` (1/0) e `DIASEXPSENHA` (inteiro), tamanhos
   máximos dos campos, aba "Segurança" da tela do RM (não coberta).
 - **Saída XML do Gerador**: formato inferido do padrão DataSet do RM.
@@ -96,8 +111,8 @@ que ainda falta validar. Atualizado em 19/11/2026. Os hashes entre parênteses s
   registro online), criar testes com arquivos reais anonimizados e padronizar "onde está o erro +
   como corrigir", preparando a entrada de outros bancos.
 - **Calibrar a leitura da MIT** com o texto TO BE de MITs reais (anonimizadas).
-- **Novos módulos do Gerador**: Educacional (plano feito, não implementado), Eventos Contábeis,
-  Tipos de Documento.
+- **Novos módulos do Gerador**: Educacional (plano feito, não implementado), Tipos de Documento.
+  Eventos contábeis já têm o Postman facilitado (sem planilha).
 - **Segurança**: login (ou proteção da Vercel) antes de abrir o site para fora do time — hoje
   `/api/log/*`, envio e exclusão de XML contribuído são públicos.
 - Limpeza: `estrutura.txt` é uma listagem antiga de arquivos de outra máquina, sem uso.

@@ -177,23 +177,27 @@ async def pre_processar_mit41_bruto(arquivo: UploadFile = File(...)):
 
     return {
         "texto_para_ponte": gerar_texto_para_ponte(subprocessos),
-        "subprocessos": [
-            {
-                "numero": sp.numero,
-                "titulo": sp.titulo,
-                "processo_relacionado": sp.processo_relacionado,
-                "texto_as_is": sp.texto_as_is,
-                "texto_to_be": sp.texto_to_be,
-                "gap": sp.gap,
-                "campos_que_precisam_de_ia": [
-                    "EFEITO_ESTOQUE", "EFEITO_FINANCEIRO", "DOCUMENTO_FISCAL",
-                    "CONTABILIZACAO", "REGRAS",
-                ] if sp.texto_to_be else [],
-                "sugestao_aproximada": sugerir_grupos(montar_campos_para_matcher(sp)),
-            }
-            for sp in subprocessos
-        ]
+        "subprocessos": _subprocessos_para_tela(subprocessos),
     }
+
+
+def _subprocessos_para_tela(subprocessos) -> list[dict]:
+    return [
+        {
+            "numero": sp.numero,
+            "titulo": sp.titulo,
+            "processo_relacionado": sp.processo_relacionado,
+            "texto_as_is": sp.texto_as_is,
+            "texto_to_be": sp.texto_to_be,
+            "gap": sp.gap,
+            "campos_que_precisam_de_ia": [
+                "EFEITO_ESTOQUE", "EFEITO_FINANCEIRO", "DOCUMENTO_FISCAL",
+                "CONTABILIZACAO", "REGRAS",
+            ] if sp.texto_to_be else [],
+            "sugestao_aproximada": sugerir_grupos(montar_campos_para_matcher(sp)),
+        }
+        for sp in subprocessos
+    ]
 
 
 # --- Análise da MIT 41 inteira x biblioteca ----------------------------------
@@ -262,6 +266,48 @@ async def analisar_mit41_pdf(tarefas: BackgroundTasks, arquivo: UploadFile = Fil
     texto, tabelas = _ler_pdf_mit(conteudo)
     subprocessos = pre_processar_documento(texto, indice_pre_extraido=extrair_indice_de_tabelas(tabelas))
     return _responder_analise(movimentos_de_subprocessos(subprocessos), tarefas, "pdf")
+
+
+# --- Hub MIT 41: interpretador + análise numa chamada só -----------------------
+
+def _responder_hub(subprocessos, movimentos: list[MovimentoMit], tarefas: BackgroundTasks, origem: str) -> dict:
+    """Subprocessos (AS IS/TO BE/GAP, sugestão de grupo) + análise x biblioteca, do mesmo texto."""
+    # O interpretador devolve um item vazio ("título não identificado") quando não acha nada.
+    subprocessos = [sp for sp in subprocessos if sp.numero or sp.texto_to_be]
+    if not subprocessos and not movimentos:
+        raise HTTPException(
+            status_code=400,
+            detail="Não encontrei nenhum subprocesso nem movimento. Envie a MIT 41 (PDF ou texto) "
+                   "ou a saída do interpretador com [INICIO_MOVIMENTO].",
+        )
+    analise = analisar(movimentos, extras=_candidatos_personalizados()) if movimentos else None
+    tarefas.add_task(registrar_uso, "mit41", "hub", {
+        "origem": origem, "subprocessos": len(subprocessos), **(analise["resumo"] if analise else {}),
+    })
+    return {
+        "analise": analise,
+        "subprocessos": _subprocessos_para_tela(subprocessos),
+        "texto_para_ponte": gerar_texto_para_ponte(subprocessos) if subprocessos else "",
+    }
+
+
+@router.post("/hub-mit41")
+def hub_mit41_texto(corpo: TextoMit41, tarefas: BackgroundTasks):
+    """Hub da MIT 41 a partir de texto (MIT colada ou saída do interpretador)."""
+    if len(corpo.texto) > _LIMITE_TEXTO:
+        raise HTTPException(status_code=413, detail=_MSG_LIMITE)
+    return _responder_hub(pre_processar_documento(corpo.texto), movimentos_de_texto(corpo.texto), tarefas, "texto")
+
+
+@router.post("/hub-mit41-pdf")
+async def hub_mit41_pdf(tarefas: BackgroundTasks, arquivo: UploadFile = File(...)):
+    """Hub da MIT 41 a partir do PDF: lê o PDF uma vez e devolve interpretação + análise."""
+    conteudo = await arquivo.read()
+    if len(conteudo) > _LIMITE_PDF:
+        raise HTTPException(status_code=413, detail="PDF muito grande (limite de 15 MB).")
+    texto, tabelas = _ler_pdf_mit(conteudo)
+    subprocessos = pre_processar_documento(texto, indice_pre_extraido=extrair_indice_de_tabelas(tabelas))
+    return _responder_hub(subprocessos, movimentos_de_subprocessos(subprocessos), tarefas, "pdf")
 
 
 @router.post("/limpar-avulso")

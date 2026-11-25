@@ -184,7 +184,7 @@ def _entrega_lote(operacao: str, nome_arquivo: str, total: int) -> list:
 
 MODULO = Modulo(
     chave="glb-usuario",
-    nome="Cadastro de Usuário",
+    nome="Cadastro da GUSUARIO",
     dataserver="GlbUsuarioData",
     descricao="Gera o JSON para incluir ou alterar um usuário (tabela GUSUARIO) via REST do DataServer.",
     campos=CAMPOS,
@@ -199,6 +199,7 @@ MODULO = Modulo(
     listas_config={"codigos_acesso": "CODACESSO"},
     campos_saida=CAMPOS_GET,
     id_do_registro=lambda payload: payload.get("CODUSUARIO"),
+    campos_nao_enviar=CREDENCIAIS + CONTROLADOS_PELO_RM,
     nao_validado=(
         "Tamanhos máximos dos campos não foram confirmados (só há um teto geral de 255 caracteres).",
         "Os formatos de OBRIGAALTERARSENHA (1/0), DIASEXPSENHA, INTEGRADOFLUIG, CONFIRMABTNOK, "

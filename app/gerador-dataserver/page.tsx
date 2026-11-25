@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Header } from "../components/Header";
 import { baixarBlob } from "../lib/download";
-import { EnviarAoRm } from "./EnviarAoRm";
+import { PostmanRm } from "../components/PostmanRm";
+import { Registro, extrairRegistros } from "../lib/registros";
 
 type Campo = {
   nome: string;
@@ -24,6 +25,7 @@ type Modulo = {
   operacoes: string[];
   campos: Campo[];
   nao_validado: string[];
+  campos_nao_enviar?: string[];
   planilha_modelo_url?: string | null;
   planilha_modelo_xlsx_url?: string | null;
 };
@@ -42,6 +44,14 @@ function hojeISO() {
   const mes = String(d.getMonth() + 1).padStart(2, "0");
   const dia = String(d.getDate()).padStart(2, "0");
   return `${d.getFullYear()}-${mes}-${dia}`;
+}
+
+function paraRegistros(json: string | undefined): Registro[] {
+  try {
+    return json ? extrairRegistros(JSON.parse(json)) : [];
+  } catch {
+    return [];
+  }
 }
 
 function valoresIniciais(modulo: Modulo): Valores {
@@ -108,13 +118,11 @@ export default function GeradorDataServerPage() {
 
   const modulo = modulos.find((m) => m.chave === chave) ?? null;
 
-  // Registros válidos do lote, no formato do envio (memorizado: o envio ao RM
-  // reinicia quando a lista muda). Não usa o JSON "do GET": ele traz null em
-  // todos os campos vazios, e num PUT um null apagaria o valor no RM.
-  const registrosLote = useMemo<Record<string, unknown>[]>(
-    () => (Array.isArray(lote?.registros) ? lote.registros : []),
-    [lote]
-  );
+  // Registros válidos no formato do GET, para o envio ao RM (memorizado: o envio
+  // reinicia quando a lista muda). O PostmanRm limpa cada um antes de enviar
+  // (tira id, null, credenciais e campos do RM).
+  const registrosLote = useMemo<Registro[]>(() => paraRegistros(lote?.json), [lote]);
+  const registrosFormulario = useMemo<Registro[]>(() => paraRegistros(resultado?.json), [resultado]);
 
   function carregarModulos(codigoCliente: string, manterSelecao: boolean) {
     const q = codigoCliente.trim() ? `?cliente=${encodeURIComponent(codigoCliente.trim())}` : "";
@@ -362,12 +370,12 @@ export default function GeradorDataServerPage() {
       <div className="mx-auto max-w-4xl">
         <Header />
         <h1 className="mt-6 font-display text-4xl font-bold text-ink md:text-5xl">
-          Gerador de DataServer
+          Cadastro da GUSUARIO
         </h1>
         <p className="mt-3 max-w-xl text-muted">
-          Preencha os campos, confira a prévia e baixe o arquivo pronto. A
-          ferramenta <strong>não conecta ao RM</strong> e não guarda nada do
-          que você digita -- o envio é feito por você.
+          Valide a planilha (ou preencha o formulário), confira o JSON no formato do GET e envie os
+          usuários ao RM com um clique, pelo conector na sua máquina. O site não se conecta ao RM e
+          não guarda nada do que você digita.
         </p>
 
         {/* Módulos -- mais entram aqui conforme forem criados */}
@@ -676,12 +684,7 @@ export default function GeradorDataServerPage() {
                           )}
                         </div>
                         {modulo && registrosLote.length > 0 && (
-                          <EnviarAoRm
-                            dataserver={modulo.dataserver}
-                            campoChave={modulo.campo_chave ?? null}
-                            operacao={operacao}
-                            registros={registrosLote}
-                          />
+                          <EnvioAoRm modulo={modulo} operacao={operacao} registros={registrosLote} />
                         )}
                         <h3 className="mt-5 font-display text-sm font-bold text-ink">
                           Ou envie pelo script (sem o conector)
@@ -849,15 +852,46 @@ export default function GeradorDataServerPage() {
               </button>
             </div>
 
-            <h3 className="mt-5 font-display text-sm font-bold text-ink">Como enviar</h3>
-            <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs text-muted">
-              {resultado.instrucoes.map((i) => (
-                <li key={i} className="break-words">{i}</li>
-              ))}
-            </ol>
+            {modulo && registrosFormulario.length > 0 && (
+              <EnvioAoRm modulo={modulo} operacao={operacao} registros={registrosFormulario} />
+            )}
+
+            <details className="mt-5">
+              <summary className="cursor-pointer font-display text-sm font-bold text-ink">
+                Ou envie por fora (curl, SOAP UI, Postman)
+              </summary>
+              <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs text-muted">
+                {resultado.instrucoes.map((i) => (
+                  <li key={i} className="break-words">{i}</li>
+                ))}
+              </ol>
+            </details>
           </div>
         )}
       </div>
     </main>
+  );
+}
+
+/** Envio ao RM pelo conector: o "Postman facilitado" já com os usuários no corpo. */
+function EnvioAoRm({ modulo, operacao, registros }: { modulo: Modulo; operacao: string; registros: Registro[] }) {
+  return (
+    <div className="mt-6">
+      <h3 className="font-display text-sm font-bold text-ink">Enviar ao RM</h3>
+      <p className="mb-2 mt-1 text-xs text-muted">
+        Os usuários já estão no corpo, no formato do GET. Ao enviar, cada um vai numa chamada, sem id, sem
+        campos vazios e sem credenciais. Em inclusão, quem já existir no RM é pulado (ou alterado, se você
+        escolher em &quot;Opções de envio&quot;). Comece pelo teste com o primeiro registro.
+      </p>
+      <PostmanRm
+        dataserverPadrao={modulo.dataserver}
+        dataserverFixo
+        campoChavePadrao={modulo.campo_chave ?? ""}
+        camposNaoEnviar={modulo.campos_nao_enviar ?? []}
+        registrosIniciais={registros}
+        metodoInicial={operacao === "alterar" ? "PUT" : "POST"}
+        nomeArquivo={`${modulo.dataserver}_${operacao}`}
+      />
+    </div>
   );
 }

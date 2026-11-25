@@ -33,6 +33,36 @@ export function mensagemConectorInacessivel(porta: string) {
   return (
     `Não encontrei o conector em ${urlConector(porta)}. Confira se a janela do conector está aberta, ` +
     "se a porta é a mesma e se o navegador pediu permissão para acessar a rede local (permita). " +
-    "Se abriu o conector sem --origem igual a este site, feche e abra de novo com o comando da tela Conector RM."
+    "Se abriu o conector sem --origem igual a este site, feche e abra de novo com o comando de " +
+    "\"Como abrir o conector\"."
   );
+}
+
+export type BaseRm = { nome: string; rm: string };
+export type StatusConector = { versao: string; rm: string; bases: BaseRm[] };
+
+/** Versão mínima do conector para várias bases e "se já existir: pular/alterar". */
+export const VERSAO_MINIMA = "1.1.0";
+
+export function versaoAtende(versao: string, minima = VERSAO_MINIMA) {
+  const a = versao.split(".").map(Number);
+  const b = minima.split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0);
+  }
+  return true;
+}
+
+/**
+ * Comando para abrir o conector. `bases`: uma por linha, "nome=https://servidor:porta"
+ * (ou só o endereço, se for uma base).
+ */
+export function comandoConector(bases: string, origem: string, porta: string, autoassinado: boolean) {
+  const linhas = bases.split("\n").map((l) => l.trim()).filter(Boolean);
+  const partes = ["python conector_rm.py"];
+  for (const l of linhas.length ? linhas : ["https://SERVIDOR-RM:PORTA"]) partes.push(`--rm ${l}`);
+  if (origem) partes.push(`--origem ${origem}`);
+  if (porta && porta !== PORTA_PADRAO) partes.push(`--porta ${porta}`);
+  if (autoassinado) partes.push("--aceitar-certificado-autoassinado");
+  return partes.join(" ");
 }

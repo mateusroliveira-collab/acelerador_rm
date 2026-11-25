@@ -3,10 +3,10 @@ import { Header } from "./components/Header";
 
 const ferramentas = [
   {
-    href: "/pre-processador-mit41",
+    href: "/hub-mit41",
     codigo: "01",
-    titulo: "Interpretador de MIT 41",
-    descricao: "Organiza o MIT 41 bruto em subprocessos via regra pura.",
+    titulo: "Hub MIT 41",
+    descricao: "Interpreta a MIT 041 (AS IS, TO BE, GAP) e cruza com a biblioteca de XMLs: o que está pronto, o que ajustar e o que criar.",
     disponivel: true,
   },
   {
@@ -26,22 +26,15 @@ const ferramentas = [
   {
     href: "/gerador-dataserver",
     codigo: "04",
-    titulo: "Gerador de DataServer",
-    descricao: "Gera e valida o payload do DataServer (ex.: cadastro de usuário).",
+    titulo: "Cadastro da GUSUARIO",
+    descricao: "Planilha para o cliente, validação em lote e envio dos usuários ao RM com um clique.",
     disponivel: true,
   },
   {
-    href: "/analise-mit41",
+    href: "/evento-contabil-automatico",
     codigo: "05",
-    titulo: "Análise da MIT 41",
-    descricao: "Cruza a MIT com a biblioteca de XMLs e monta a ficha dos movimentos que faltam.",
-    disponivel: true,
-  },
-  {
-    href: "/conector-rm",
-    codigo: "06",
-    titulo: "Conector RM",
-    descricao: "Consulta, inclui, altera e exclui no RM pelo REST, a partir da sua máquina.",
+    titulo: "Evento Contábil Automático",
+    descricao: "Postman facilitado: puxe eventos contábeis de uma base, junte arquivos JSON e envie para outra.",
     disponivel: true,
   },
 ];

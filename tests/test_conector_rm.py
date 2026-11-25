@@ -216,3 +216,77 @@ def test_normalizar_rm():
 
 def test_main_recusa_endereco_invalido(capsys):
     assert conector.main(["--rm", "ftp://x"]) == 2
+
+
+# --- 1.1: várias bases, chave composta, registro existente ------------------------
+
+LOTE = "/rm/lote"
+DS = "/rmsrestdataserver/rest/GlbUsuarioData"
+
+
+def test_status_lista_as_bases(ambiente):
+    cfg, base = ambiente
+    cfg.bases = {"homolog": cfg.rm, "producao": cfg.rm}
+    _, _, r = _chamar(base, "/status")
+    assert [b["nome"] for b in r["bases"]] == ["homolog", "producao"] and r["versao"] == "1.1.0"
+
+
+def test_chamada_vai_para_a_base_escolhida_e_base_desconhecida_e_recusada(ambiente):
+    cfg, base = ambiente
+    cfg.bases = {"origem": "http://127.0.0.1:9", "destino": cfg.rm}  # origem: porta fechada
+    status, _, r = _chamar(base, "/rm", {"metodo": "GET", "caminho": DS, "base": "destino",
+                                         "usuario": "u", "senha": SENHA})
+    assert status == 200 and r["ok"] and len(_RmFalso.recebidos) == 1
+    status, _, r = _chamar(base, "/rm", {"metodo": "GET", "caminho": DS, "base": "outra",
+                                         "usuario": "u", "senha": SENHA})
+    assert status == 400 and "destino" in r["como_corrigir"]
+    assert any("[destino] GET" in linha for linha in cfg.log)
+
+
+def test_chave_composta_usa_separador_do_rm():
+    reg = {"CODCOLIGADA": 1, "CODEVENTO": 7, "NOME": "x"}
+    assert conector.chave_do_registro(reg, "CODCOLIGADA,CODEVENTO") == "1$_$7"
+    assert conector.chave_do_registro(reg, "CODCOLIGADA, CODFALTANTE") == ""
+    assert conector.chave_do_registro({"CODUSUARIO": "ana"}, "CODUSUARIO") == "ana"
+
+
+def test_put_com_chave_composta(ambiente):
+    _, base = ambiente
+    _, _, r = _chamar(base, LOTE, {"metodo": "PUT", "caminho": "/rmsrestdataserver/rest/CtbEventoData",
+                                   "campo_chave": "CODCOLIGADA,CODEVENTO", "usuario": "u", "senha": SENHA,
+                                   "registros": [{"CODCOLIGADA": 1, "CODEVENTO": 1}]})
+    assert r["sucesso"] == 1 and _RmFalso.recebidos[0]["caminho"].endswith("/CtbEventoData/1$_$1")
+
+
+def test_post_pula_ou_altera_o_que_ja_existe(ambiente):
+    _, base = ambiente
+    regs = [{"CODUSUARIO": "ana"}, {"CODUSUARIO": "naoexiste"}]  # ana existe no RM falso
+    pedido = {"metodo": "POST", "caminho": DS, "campo_chave": "CODUSUARIO", "usuario": "u", "senha": SENHA,
+              "registros": regs}
+
+    _, _, r = _chamar(base, LOTE, {**pedido, "se_existir": "pular"})
+    assert [x["acao"] for x in r["resultados"]] == ["pulado", "incluido"] and r["pulados"] == 1
+    enviados = [(x["metodo"], x["caminho"]) for x in _RmFalso.recebidos]
+    assert enviados == [("GET", f"{DS}/ana"), ("GET", f"{DS}/naoexiste"), ("POST", DS)]
+
+    _RmFalso.recebidos.clear()
+    _, _, r = _chamar(base, LOTE, {**pedido, "se_existir": "alterar"})
+    assert [x["acao"] for x in r["resultados"]] == ["alterado", "incluido"]
+    assert ("PUT", f"{DS}/ana") in [(x["metodo"], x["caminho"]) for x in _RmFalso.recebidos]
+
+
+def test_se_existir_exige_campo_chave_e_valor_valido(ambiente):
+    _, base = ambiente
+    pedido = {"metodo": "POST", "caminho": DS, "usuario": "u", "senha": SENHA, "registros": [{"CODUSUARIO": "a"}]}
+    assert _chamar(base, LOTE, {**pedido, "se_existir": "pular"})[0] == 400
+    assert _chamar(base, LOTE, {**pedido, "se_existir": "x", "campo_chave": "CODUSUARIO"})[0] == 400
+
+
+def test_ler_bases():
+    assert conector.ler_bases(["https://rm:8051/x"]) == {"principal": "https://rm:8051"}
+    assert conector.ler_bases(["homolog=https://a:1", "producao=http://b:2"]) == {
+        "homolog": "https://a:1", "producao": "http://b:2"}
+    with pytest.raises(ValueError):
+        conector.ler_bases(["a=https://x:1", "a=https://y:1"])
+    with pytest.raises(ValueError):
+        conector.ler_bases(["nome ruim=https://x:1"])
