@@ -197,14 +197,20 @@ conector é um pequeno programa Python que roda na sua máquina e repassa as cha
    homolog=https://rm-homolog.cliente.com.br:8051
    producao=https://rm.cliente.com.br:8051
    ```
-3. **Baixar conector_rm.py** e **Copiar comando**. Rode o comando na pasta do arquivo, por exemplo:
-   ```
-   python conector_rm.py --rm homolog=https://rm-homolog:8051 --rm producao=https://rm:8051 --origem https://acelerador-rm.vercel.app
-   ```
-4. A janela mostra o **código de pareamento** (ex.: `7F3A91C2`, muda a cada abertura). Deixe-a aberta.
-5. Na tela, cole o código e clique **Conectar**. Se o navegador pedir permissão para acessar a
-   **rede local**, permita. Informe usuário e senha do RM (ficam só na memória da aba).
+3. Baixe os **dois arquivos** para a **mesma pasta**: `conector_rm.py` e o atalho
+   `abrir_conector.bat` (já vem com as bases e o endereço do site).
+4. Dê **dois cliques no `abrir_conector.bat`**. A janela fica aberta e mostra o **código de
+   pareamento** em destaque — ele já vai **copiado**: é só colar (Ctrl+V) no campo da tela.
+5. Clique **Conectar**. Se o navegador pedir permissão para acessar a **rede local**, permita.
+   Informe usuário e senha do RM (ficam só na memória da aba).
 
+O código de pareamento é gerado uma vez e guardado em `conector_rm_config.json`, ao lado do
+conector: **não muda a cada abertura** (para trocar: `--novo-codigo`). Também dá para dar dois
+cliques direto no `conector_rm.py`: na primeira vez ele pergunta o endereço do RM e do site e guarda.
+Se algo der errado, a janela não fecha sozinha: mostra o erro e espera um Enter.
+
+> A janela abriu e fechou na hora? É o conector antigo (até 1.1) aberto com dois cliques, sem o
+> comando. Baixe o novo e use o `abrir_conector.bat`.
 > Conector antigo (1.0): funciona com uma base só e sem "se já existir". A tela avisa; baixe o novo.
 
 ### Eventos contábeis: puxar, juntar e enviar
@@ -237,7 +243,8 @@ inexistente na base ou campo obrigatório faltando).
 | Mensagem | Causa provável | Como corrigir |
 |---|---|---|
 | Não encontrei o conector | Janela fechada, porta diferente ou permissão de rede local negada | Abra o conector, confira a porta, permita o acesso |
-| Código de pareamento inválido | O conector foi reaberto (o código muda) | Copie o código novo da janela |
+| Código de pareamento inválido | Código digitado errado, ou `--novo-codigo` usado | Cole de novo (Ctrl+V logo depois de abrir o conector) |
+| Porta já está em uso | O conector já está aberto em outra janela | Use a janela que já está aberta, ou feche-a |
 | Origem não autorizada | Conector aberto sem `--origem` igual ao site | Feche e abra com o comando copiado da tela |
 | Base desconhecida | A base não foi aberta no conector | Reabra o conector com `--rm nome=endereço` para ela |
 | Certificado não confiável | RM com HTTPS autoassinado | Reabra com `--aceitar-certificado-autoassinado` |

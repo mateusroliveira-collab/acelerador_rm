@@ -57,12 +57,46 @@ export function versaoAtende(versao: string, minima = VERSAO_MINIMA) {
  * Comando para abrir o conector. `bases`: uma por linha, "nome=https://servidor:porta"
  * (ou só o endereço, se for uma base).
  */
-export function comandoConector(bases: string, origem: string, porta: string, autoassinado: boolean) {
+function argumentosConector(bases: string, origem: string, porta: string, autoassinado: boolean, aspas: boolean) {
+  const q = (v: string) => (aspas ? `"${v.replace(/"/g, "")}"` : v);
   const linhas = bases.split("\n").map((l) => l.trim()).filter(Boolean);
-  const partes = ["python conector_rm.py"];
-  for (const l of linhas.length ? linhas : ["https://SERVIDOR-RM:PORTA"]) partes.push(`--rm ${l}`);
-  if (origem) partes.push(`--origem ${origem}`);
+  const partes: string[] = [];
+  for (const l of linhas.length ? linhas : ["https://SERVIDOR-RM:PORTA"]) partes.push(`--rm ${q(l)}`);
+  if (origem) partes.push(`--origem ${q(origem)}`);
   if (porta && porta !== PORTA_PADRAO) partes.push(`--porta ${porta}`);
   if (autoassinado) partes.push("--aceitar-certificado-autoassinado");
   return partes.join(" ");
+}
+
+export function comandoConector(bases: string, origem: string, porta: string, autoassinado: boolean) {
+  return `python conector_rm.py ${argumentosConector(bases, origem, porta, autoassinado, false)}`;
+}
+
+/**
+ * Atalho para Windows: salvo na mesma pasta do conector_rm.py, abre com dois
+ * cliques e segura a janela (o código de pareamento não some se der erro).
+ */
+export function atalhoWindows(bases: string, origem: string, porta: string, autoassinado: boolean) {
+  const args = argumentosConector(bases, origem, porta, autoassinado, true);
+  return [
+    "@echo off",
+    "chcp 65001 >nul",
+    "title Conector RM - deixe esta janela aberta",
+    'cd /d "%~dp0"',
+    'if not exist "conector_rm.py" (',
+    "  echo Coloque este arquivo na mesma pasta do conector_rm.py.",
+    "  pause",
+    "  exit /b 1",
+    ")",
+    "where py >nul 2>nul",
+    "if %errorlevel%==0 (",
+    `  py conector_rm.py ${args}`,
+    ") else (",
+    `  python conector_rm.py ${args}`,
+    ")",
+    "echo.",
+    "echo O conector foi encerrado.",
+    "pause",
+    "",
+  ].join("\r\n");
 }

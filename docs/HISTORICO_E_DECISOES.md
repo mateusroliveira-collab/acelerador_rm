@@ -54,10 +54,11 @@ que ainda falta validar. Atualizado em 19/11/2026. Os hashes entre parênteses s
 | Entrega | Commit |
 |---|---|
 | Planilha e JSON do cadastro de usuário no **formato do GET** (nomes técnicos, ordem do RM, 1/0 e T/F, envelope `messages/length/data`) | `44a9f86` |
-| Gerador renomeado para **Cadastro da GUSUARIO**, com envio ao RM pelo Postman facilitado | (esta fase) |
-| Conector 1.1: **várias bases** com nome, chave composta `$_$`, "se já existir: pular/alterar" | (esta fase) |
-| Tela **Evento Contábil Automático** (substitui o Conector RM): puxar, anexar JSON, trocar coligada, enviar | (esta fase) |
-| **Hub MIT 41**: Interpretador + Análise numa tela, PDF lido uma vez | (esta fase) |
+| Gerador renomeado para **Cadastro da GUSUARIO**, com envio ao RM pelo Postman facilitado | `7575f2f` |
+| Conector 1.1: **várias bases** com nome, chave composta `$_$`, "se já existir: pular/alterar" | `7575f2f` |
+| Tela **Evento Contábil Automático** (substitui o Conector RM): puxar, anexar JSON, trocar coligada, enviar | `7575f2f` |
+| **Hub MIT 41**: Interpretador + Análise numa tela, PDF lido uma vez | `7575f2f` |
+| Conector 1.2: abre com dois cliques (pergunta e guarda a configuração), atalho `.bat`, código de pareamento fixo e copiado | (este commit) |
 
 ## 2. Decisões
 
@@ -77,6 +78,7 @@ que ainda falta validar. Atualizado em 19/11/2026. Os hashes entre parênteses s
 | 25/11 | JSON de saída no formato do GET, mas o **envio** leva um registro por chamada, sem `id`, sem `null`, sem credenciais | POST com o envelope do GET deu erro 0007 (restrição); num PUT, `null` apaga o valor no RM | Enviar o JSON do GET como está |
 | 25/11 | Antes de um POST, consultar a chave e pular (padrão) ou alterar o que já existe | Evita o 0007 de "já existe" (ex.: `mestre`) | Deixar o RM recusar |
 | 25/11 | Várias bases num conector só, por nome (`--rm nome=endereço`) | Puxar de uma base e enviar para outra sem trocar de conector; continua sem ser proxy aberto | Um conector por base |
+| 25/11 | Código de pareamento guardado ao lado do conector (não muda a cada abertura) | Analistas não conseguiam ler o código (janela fechava); a proteção principal continua sendo a origem do site + só 127.0.0.1 | Código novo a cada abertura |
 | 25/11 | Nome do DataServer de eventos contábeis editável e lembrado no navegador | Não estava confirmado; a tela serve para qualquer DataServer | Fixar um nome deduzido |
 
 ## 3. Pendências

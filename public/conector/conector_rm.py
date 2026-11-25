@@ -21,10 +21,17 @@ Segurança:
 Requisitos: Python 3.9+ (só biblioteca padrão, nada para instalar).
 
 Uso:
+  Dois cliques no arquivo (ou "python conector_rm.py" sem nada): pergunta o
+  endereço do RM e do site na primeira vez e guarda em conector_rm_config.json,
+  ao lado deste arquivo. Ou pelo comando montado na tela:
   python conector_rm.py --rm https://rm.cliente.com.br:8051 --origem https://SEU-APP.vercel.app
   Várias bases (a tela escolhe origem e destino pelo nome):
   python conector_rm.py --rm homolog=https://rm-hml:8051 --rm producao=https://rm:8051 --origem https://SEU-APP.vercel.app
-  Opções: --porta 8765   --aceitar-certificado-autoassinado   --timeout 60
+  Opções: --porta 8765   --aceitar-certificado-autoassinado   --timeout 60   --novo-codigo
+
+O CÓDIGO DE PAREAMENTO é gerado uma vez e guardado no mesmo arquivo: não muda
+a cada abertura (use --novo-codigo para trocar). Ele também é copiado para a
+área de transferência ao abrir.
 
 Deixe a janela aberta enquanto usa as telas do Acelerador (Evento Contábil
 Automático, Cadastro da GUSUARIO). Ctrl+C encerra.
@@ -35,9 +42,11 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import os
 import secrets
 import socket
 import ssl
+import subprocess
 import sys
 import time
 import urllib.error
@@ -45,8 +54,9 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
-VERSAO = "1.1.0"
+VERSAO = "1.2.0"
 PORTA_PADRAO = 8765
 PREFIXOS_PERMITIDOS = ("/rmsrestdataserver/", "/api/")
 METODOS = ("GET", "POST", "PUT", "DELETE")
@@ -55,6 +65,9 @@ MAX_CORPO_RESPOSTA = 2_000_000  # bytes da resposta do RM devolvidos à tela
 MAX_REGISTROS_LOTE = 500
 SEPARADOR_CHAVE = "$_$"  # chave composta no REST do RM (ex.: CODCOLIGADA$_$CODEVENTO = "1$_$1")
 SE_EXISTIR = ("erro", "pular", "alterar")
+SITE_PADRAO = "https://acelerador-rm.vercel.app"
+# Configuração e código de pareamento guardados ao lado do conector (nunca senha).
+ARQUIVO_CONFIG = Path(__file__).resolve().with_name("conector_rm_config.json")
 
 
 @dataclass
@@ -444,7 +457,100 @@ def ler_bases(valores: list[str]) -> dict:
     return bases
 
 
-def main(argv: list[str] | None = None) -> int:
+# --- Configuração guardada e modo "dois cliques" ------------------------------
+
+
+def ler_config(arquivo: Path | None = None) -> dict:
+    try:
+        dados = json.loads((arquivo or ARQUIVO_CONFIG).read_text(encoding="utf-8"))
+        return dados if isinstance(dados, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def salvar_config(dados: dict, arquivo: Path | None = None) -> None:
+    try:
+        (arquivo or ARQUIVO_CONFIG).write_text(json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError:
+        pass  # pasta sem permissão de escrita: segue sem guardar
+
+
+def codigo_de_pareamento(novo: bool = False, arquivo: Path | None = None) -> str:
+    """Código guardado (não muda a cada abertura); gera e guarda se não houver ou se novo=True."""
+    dados = ler_config(arquivo)
+    codigo = str(dados.get("codigo") or "")
+    if novo or len(codigo) != 8 or not all(c in "0123456789ABCDEF" for c in codigo):
+        codigo = secrets.token_hex(4).upper()
+        salvar_config({**dados, "codigo": codigo}, arquivo)
+    return codigo
+
+
+def copiar_para_area_de_transferencia(texto: str) -> bool:
+    comandos = {"win32": ["clip"], "darwin": ["pbcopy"]}.get(sys.platform)
+    if not comandos:
+        return False
+    try:
+        subprocess.run(comandos, input=texto.encode("utf-8"), check=True, timeout=5,
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        return True
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _perguntar(texto: str, padrao: str = "") -> str:
+    resposta = input(f"{texto}{f' [{padrao}]' if padrao else ''}: ").strip()
+    return resposta or padrao
+
+
+def perguntar_argumentos(arquivo: Path | None = None) -> list[str]:
+    """Modo dois cliques: usa a configuração guardada ou pergunta e guarda."""
+    dados = ler_config(arquivo)
+    bases = [b for b in dados.get("bases", []) if isinstance(b, str) and b.strip()]
+    print(f"Conector RM {VERSAO}\n")
+    if bases:
+        print("Configuração guardada:")
+        for b in bases:
+            print(f"  Base: {b}")
+        print(f"  Site: {', '.join(dados.get('origem') or [SITE_PADRAO])}\n")
+        if _perguntar("Usar esta configuração? (S/n)", "S").lower().startswith("s"):
+            return _argumentos(dados)
+    print("Endereço do RM (o do REST/Host, ex.: https://rm.cliente.com.br:8051).")
+    print("Para mais de uma base, use nome=endereço (ex.: homolog=https://rm-hml:8051).")
+    bases = []
+    while True:
+        b = _perguntar(f"Base {len(bases) + 1}" + (" (Enter para terminar)" if bases else ""))
+        if not b:
+            if bases:
+                break
+            continue
+        try:
+            ler_bases([b])
+        except ValueError as e:
+            print(f"  {e}")
+            continue
+        bases.append(b)
+    origem = _perguntar("Endereço do site do Acelerador", (dados.get("origem") or [SITE_PADRAO])[0])
+    autoassinado = _perguntar("O RM usa certificado HTTPS próprio (autoassinado)? (s/N)", "N").lower().startswith("s")
+    dados = {**dados, "bases": bases, "origem": [origem.rstrip("/")], "autoassinado": autoassinado}
+    salvar_config(dados, arquivo)
+    print(f"\nConfiguração guardada em {(arquivo or ARQUIVO_CONFIG).name} (na próxima vez é só dar dois cliques).\n")
+    return _argumentos(dados)
+
+
+def _argumentos(dados: dict) -> list[str]:
+    argv: list[str] = []
+    for b in dados.get("bases", []):
+        argv += ["--rm", b]
+    for o in dados.get("origem") or [SITE_PADRAO]:
+        argv += ["--origem", o]
+    if dados.get("porta"):
+        argv += ["--porta", str(dados["porta"])]
+    if dados.get("autoassinado"):
+        argv.append("--aceitar-certificado-autoassinado")
+    return argv
+
+
+def main(argv: list[str] | None = None, arquivo_config: Path | None = None) -> int:
     ap = argparse.ArgumentParser(description="Conector local entre o Acelerador e o RM.")
     ap.add_argument("--rm", required=True, action="append",
                     help="Endereço do RM, ex.: https://rm.cliente.com.br:8051. Para várias bases, repita com "
@@ -455,6 +561,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--timeout", type=float, default=60.0, help="Segundos de espera por chamada ao RM.")
     ap.add_argument("--aceitar-certificado-autoassinado", action="store_true",
                     help="Aceita HTTPS com certificado próprio do cliente (não verifica o certificado).")
+    ap.add_argument("--novo-codigo", action="store_true", help="Gera um código de pareamento novo.")
     a = ap.parse_args(argv)
 
     try:
@@ -463,12 +570,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Erro: {e}", file=sys.stderr)
         return 2
     origens = tuple(o.rstrip("/") for o in a.origem) or ("http://localhost:3000",)
-    cfg = Config(rm=next(iter(bases.values())), token=secrets.token_hex(4).upper(), origens=origens,
-                 aceitar_autoassinado=a.aceitar_certificado_autoassinado, timeout=a.timeout, bases=bases)
+    cfg = Config(rm=next(iter(bases.values())), token=codigo_de_pareamento(a.novo_codigo, arquivo_config),
+                 origens=origens, aceitar_autoassinado=a.aceitar_certificado_autoassinado, timeout=a.timeout,
+                 bases=bases)
     try:
         servidor = criar_servidor(cfg, a.porta)
     except OSError:
-        print(f"Erro: a porta {a.porta} já está em uso. Use --porta com outro número.", file=sys.stderr)
+        print(f"Erro: a porta {a.porta} já está em uso (o conector já está aberto em outra janela?). "
+              "Feche a outra janela ou use --porta com outro número.", file=sys.stderr)
         return 2
 
     print(f"Conector RM {VERSAO}")
@@ -478,8 +587,14 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  Porta:   {a.porta} (só esta máquina)")
     if cfg.aceitar_autoassinado:
         print("  AVISO:   certificado HTTPS do RM NÃO será verificado (--aceitar-certificado-autoassinado).")
+    copiado = copiar_para_area_de_transferencia(cfg.token)
     print()
-    print(f"  CÓDIGO DE PAREAMENTO:  {cfg.token}")
+    print("  " + "=" * 44)
+    print(f"     CÓDIGO DE PAREAMENTO:   {cfg.token}")
+    print("  " + "=" * 44)
+    print("  " + ("Já copiado: é só colar (Ctrl+V) na tela do Acelerador." if copiado
+                  else "Digite este código na tela do Acelerador."))
+    print("  O código fica guardado e não muda a cada abertura.")
     print()
     print("Deixe esta janela aberta. Senhas não são gravadas nem exibidas. Ctrl+C para encerrar.")
     try:
@@ -491,5 +606,24 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def iniciar() -> int:
+    """Ponto de entrada. Sem argumentos (dois cliques): pergunta e não deixa a janela sumir em erro."""
+    if len(sys.argv) > 1:
+        return main()
+    try:
+        codigo = main(perguntar_argumentos())
+    except (EOFError, KeyboardInterrupt):
+        return 1
+    except Exception as e:  # noqa: BLE001 -- mostrar qualquer erro antes de a janela fechar
+        print(f"\nErro inesperado: {e}")
+        codigo = 1
+    if codigo != 0 and os.environ.get("CONECTOR_SEM_PAUSA") != "1":
+        try:
+            input("\nPressione Enter para fechar esta janela...")
+        except (EOFError, KeyboardInterrupt):
+            pass
+    return codigo
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(iniciar())

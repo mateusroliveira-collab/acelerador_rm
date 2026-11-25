@@ -228,7 +228,7 @@ def test_status_lista_as_bases(ambiente):
     cfg, base = ambiente
     cfg.bases = {"homolog": cfg.rm, "producao": cfg.rm}
     _, _, r = _chamar(base, "/status")
-    assert [b["nome"] for b in r["bases"]] == ["homolog", "producao"] and r["versao"] == "1.1.0"
+    assert [b["nome"] for b in r["bases"]] == ["homolog", "producao"] and r["versao"] == conector.VERSAO
 
 
 def test_chamada_vai_para_a_base_escolhida_e_base_desconhecida_e_recusada(ambiente):
@@ -290,3 +290,37 @@ def test_ler_bases():
         conector.ler_bases(["a=https://x:1", "a=https://y:1"])
     with pytest.raises(ValueError):
         conector.ler_bases(["nome ruim=https://x:1"])
+
+
+# --- 1.2: dois cliques, código fixo -------------------------------------------------
+
+def test_codigo_de_pareamento_fica_guardado(tmp_path):
+    arq = tmp_path / "cfg.json"
+    c1 = conector.codigo_de_pareamento(arquivo=arq)
+    assert len(c1) == 8 and conector.codigo_de_pareamento(arquivo=arq) == c1  # não muda ao reabrir
+    c2 = conector.codigo_de_pareamento(novo=True, arquivo=arq)
+    assert c2 != c1 and conector.codigo_de_pareamento(arquivo=arq) == c2
+    assert "senha" not in arq.read_text(encoding="utf-8").lower()
+
+
+def test_dois_cliques_pergunta_guarda_e_reaproveita(tmp_path, monkeypatch):
+    arq = tmp_path / "cfg.json"
+    respostas = iter(["endereco-ruim", "homolog=https://rm-hml:8051", "producao=https://rm:8051", "",
+                      "", "s"])
+    monkeypatch.setattr("builtins.input", lambda _: next(respostas))
+    argv = conector.perguntar_argumentos(arq)
+    assert argv == ["--rm", "homolog=https://rm-hml:8051", "--rm", "producao=https://rm:8051",
+                    "--origem", conector.SITE_PADRAO, "--aceitar-certificado-autoassinado"]
+    # segunda vez: só confirma (Enter)
+    monkeypatch.setattr("builtins.input", lambda _: "")
+    assert conector.perguntar_argumentos(arq) == argv
+
+
+def test_dois_cliques_com_erro_segura_a_janela(monkeypatch):
+    perguntas = []
+    monkeypatch.setattr(conector.sys, "argv", ["conector_rm.py"])
+    monkeypatch.setattr(conector, "perguntar_argumentos", lambda: ["--rm", "ftp://x"])
+    monkeypatch.setattr("builtins.input", lambda texto: perguntas.append(texto) or "")
+    monkeypatch.delenv("CONECTOR_SEM_PAUSA", raising=False)
+    assert conector.iniciar() == 2
+    assert perguntas and "Enter" in perguntas[0]

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   PORTA_PADRAO,
   StatusConector,
+  atalhoWindows,
   comandoConector,
   lerConexaoSalva,
   mensagemConectorInacessivel,
@@ -494,10 +495,21 @@ export function PostmanRm({
         <div className="mt-3 rounded-md border border-line bg-paper p-3 text-xs text-muted">
           <p>
             O site não enxerga o RM do cliente: quem chama é o <strong>conector</strong>, um programa pequeno que roda na
-            sua máquina (Python 3.9+, nada para instalar). Informe as bases (uma por linha, <code>nome=endereço</code>),
-            baixe o arquivo e rode o comando na pasta dele. A janela mostra o <strong>código de pareamento</strong>.
+            sua máquina (Python 3.9+, nada para instalar).
           </p>
-          <label className="mt-2 flex flex-col gap-1">
+          <ol className="mt-2 list-decimal space-y-1 pl-5 text-ink">
+            <li>Informe as bases do RM abaixo (uma por linha, <code>nome=endereço</code>, ou só o endereço).</li>
+            <li>
+              Baixe os <strong>dois arquivos</strong> e salve na <strong>mesma pasta</strong>: o{" "}
+              <code>conector_rm.py</code> e o atalho <code>abrir_conector.bat</code>.
+            </li>
+            <li>
+              Dê <strong>dois cliques no abrir_conector.bat</strong>. A janela fica aberta e mostra o{" "}
+              <strong>código de pareamento</strong> em destaque, que já vai copiado: é só colar (Ctrl+V) no campo acima.
+            </li>
+            <li>O código fica guardado: nas próximas vezes é o mesmo. Deixe a janela aberta enquanto usa a tela.</li>
+          </ol>
+          <label className="mt-3 flex flex-col gap-1">
             <span className={rotulo}>Bases do RM (uma por linha)</span>
             <textarea
               value={basesTexto}
@@ -511,21 +523,44 @@ export function PostmanRm({
             <input type="checkbox" checked={autoassinado} onChange={(e) => setAutoassinado(e.target.checked)} />
             O RM usa certificado HTTPS próprio (autoassinado)
           </label>
-          <pre className="mt-2 overflow-x-auto rounded-md border border-line bg-surface px-3 py-2 font-mono text-ink">
-            {comandoConector(basesTexto, origem, porta, autoassinado)}
-          </pre>
           <div className="mt-2 flex flex-wrap gap-2">
             <a
               href="/conector/conector_rm.py"
               download
               className="rounded-md bg-action px-3 py-1.5 font-medium text-white transition hover:bg-action-hover"
             >
-              Baixar conector_rm.py
+              1. Baixar conector_rm.py
             </a>
-            <button onClick={() => copiar(comandoConector(basesTexto, origem, porta, autoassinado), "cmd")} className={botaoSec}>
-              {copiado === "cmd" ? "Copiado!" : "Copiar comando"}
+            <button
+              onClick={() =>
+                baixarBlob(
+                  new Blob([atalhoWindows(basesTexto, origem, porta, autoassinado)], { type: "application/x-bat" }),
+                  "abrir_conector.bat"
+                )
+              }
+              disabled={!basesTexto.trim()}
+              title={basesTexto.trim() ? "" : "Informe as bases do RM acima"}
+              className="rounded-md bg-action px-3 py-1.5 font-medium text-white transition hover:bg-action-hover disabled:opacity-50"
+            >
+              2. Baixar atalho abrir_conector.bat (Windows)
             </button>
           </div>
+          <details className="mt-3">
+            <summary className="cursor-pointer">Prefere o terminal (ou não usa Windows)?</summary>
+            <p className="mt-1">
+              Rode este comando no terminal, na pasta do arquivo. Também dá para dar dois cliques no{" "}
+              <code>conector_rm.py</code>: na primeira vez ele pergunta o endereço do RM e do site e guarda.
+            </p>
+            <pre className="mt-2 overflow-x-auto rounded-md border border-line bg-surface px-3 py-2 font-mono text-ink">
+              {comandoConector(basesTexto, origem, porta, autoassinado)}
+            </pre>
+            <button
+              onClick={() => copiar(comandoConector(basesTexto, origem, porta, autoassinado), "cmd")}
+              className={`${botaoSec} mt-2`}
+            >
+              {copiado === "cmd" ? "Copiado!" : "Copiar comando"}
+            </button>
+          </details>
         </div>
       )}
 
