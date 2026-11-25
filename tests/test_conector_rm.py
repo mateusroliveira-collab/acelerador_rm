@@ -324,3 +324,13 @@ def test_dois_cliques_com_erro_segura_a_janela(monkeypatch):
     monkeypatch.delenv("CONECTOR_SEM_PAUSA", raising=False)
     assert conector.iniciar() == 2
     assert perguntas and "Enter" in perguntas[0]
+
+
+def test_site_nao_autorizado_e_avisado_na_janela(ambiente):
+    cfg, base = ambiente
+    status, _, _ = _chamar(base, "/status", origem="https://outro-site.vercel.app")
+    assert status == 403
+    _chamar(base, "/status", origem="https://outro-site.vercel.app")
+    avisos = [l for l in cfg.log if "RECUSADO" in l]
+    assert len(avisos) == 1  # uma vez por site, sem encher a janela
+    assert "https://outro-site.vercel.app" in avisos[0] and ORIGEM in avisos[0]

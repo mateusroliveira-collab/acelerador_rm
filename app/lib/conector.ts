@@ -31,8 +31,9 @@ export function salvarConexao(c: ConexaoConector) {
 /** Mensagem para quando o navegador nem alcança o conector. */
 export function mensagemConectorInacessivel(porta: string) {
   return (
-    `Não encontrei o conector em ${urlConector(porta)}. Confira se a janela do conector está aberta, ` +
-    "se a porta é a mesma e se o navegador pediu permissão para acessar a rede local (permita). " +
+    `Não encontrei o conector em ${urlConector(porta)}. Confira se a janela do conector está aberta e ` +
+    `se a "Porta do conector" é a da linha "Porta:" da janela (padrão ${PORTA_PADRAO}) -- não é a porta do RM. ` +
+    "Se o navegador pedir permissão para acessar a rede local, permita. " +
     "Se abriu o conector sem --origem igual a este site, feche e abra de novo com o comando de " +
     "\"Como abrir o conector\"."
   );

@@ -242,7 +242,7 @@ inexistente na base ou campo obrigatório faltando).
 ### Erros comuns
 | Mensagem | Causa provável | Como corrigir |
 |---|---|---|
-| Não encontrei o conector | Janela fechada, porta diferente ou permissão de rede local negada | Abra o conector, confira a porta, permita o acesso |
+| Não encontrei o conector | Janela fechada, porta errada (ex.: a do RM, 8051, no campo "Porta do conector") ou permissão de rede local negada | Abra o conector; use a porta da linha "Porta:" da janela (padrão 8765); permita o acesso |
 | Código de pareamento inválido | Código digitado errado, ou `--novo-codigo` usado | Cole de novo (Ctrl+V logo depois de abrir o conector) |
 | Porta já está em uso | O conector já está aberto em outra janela | Use a janela que já está aberta, ou feche-a |
 | Origem não autorizada | Conector aberto sem `--origem` igual ao site | Feche e abra com o comando copiado da tela |

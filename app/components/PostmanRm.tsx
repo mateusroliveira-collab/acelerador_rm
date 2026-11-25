@@ -120,6 +120,7 @@ export function PostmanRm({
   const [token, setToken] = useState("");
   const [status, setStatus] = useState<StatusConector | null>(null);
   const [conectando, setConectando] = useState(false);
+  const [avisoConexao, setAvisoConexao] = useState<string | null>(null);
   const [comoAbrir, setComoAbrir] = useState(false);
   const [basesTexto, setBasesTexto] = useState("");
   const [autoassinado, setAutoassinado] = useState(false);
@@ -250,21 +251,77 @@ export function PostmanRm({
   async function conectar() {
     setConectando(true);
     setErro(null);
+    setAvisoConexao(null);
     setStatus(null);
     try {
-      const r = await fetch(`${urlConector(porta)}/status`, { headers: { "X-Conector-Token": token.trim() } });
+      let portaUsada = porta;
+      let r: Response;
+      try {
+        r = await fetch(`${urlConector(porta)}/status`, { headers: { "X-Conector-Token": token.trim() } });
+      } catch (e) {
+        // Erro comum: a porta do RM (ex.: 8051) no lugar da do conector. Tenta a padrão.
+        if (porta === PORTA_PADRAO) throw e;
+        r = await fetch(`${urlConector(PORTA_PADRAO)}/status`, { headers: { "X-Conector-Token": token.trim() } });
+        portaUsada = PORTA_PADRAO;
+        setPorta(PORTA_PADRAO);
+        setAvisoConexao(
+          `O conector não estava na porta ${porta}, e sim na ${PORTA_PADRAO} (a padrão): corrigi o campo. ` +
+            "A porta do RM vai só no endereço das bases."
+        );
+      }
       const dados = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(`${dados.erro ?? "Conector recusou."} ${dados.como_corrigir ?? ""}`.trim());
       const bases = Array.isArray(dados.bases) && dados.bases.length ? dados.bases : [{ nome: "", rm: dados.rm }];
       setStatus({ versao: dados.versao, rm: dados.rm, bases });
       setBaseConsulta(bases[0].nome);
       setBaseEnvio(bases[bases.length > 1 ? 1 : 0].nome);
-      salvarConexao({ porta, token: token.trim() });
+      salvarConexao({ porta: portaUsada, token: token.trim() });
     } catch (e) {
-      tratarFalha(e);
+      const msg = e instanceof Error ? e.message : "";
+      if (msg && msg !== "Failed to fetch" && !msg.includes("NetworkError")) {
+        tratarFalha(e);
+      } else {
+        await diagnosticarFalhaDeConexao();
+      }
     } finally {
       setConectando(false);
     }
+  }
+
+  /** O conector está rodando? Um GET simples (sem CORS) chega nele mesmo quando o site não é aceito. */
+  async function conectorResponde(p: string) {
+    try {
+      await fetch(`${urlConector(p)}/status`, { mode: "no-cors", cache: "no-store" });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function diagnosticarFalhaDeConexao() {
+    const portaViva = (await conectorResponde(porta))
+      ? porta
+      : porta !== PORTA_PADRAO && (await conectorResponde(PORTA_PADRAO))
+        ? PORTA_PADRAO
+        : null;
+    setStatus(null);
+    if (!portaViva) {
+      setErro(
+        `${mensagemConectorInacessivel(porta)} Teste: abra ${urlConector(PORTA_PADRAO)}/status numa aba nova -- ` +
+          "se aparecer \"Código de pareamento inválido\", o conector está no ar e o bloqueio é do navegador."
+      );
+      return;
+    }
+    if (portaViva !== porta) setPorta(portaViva);
+    setComoAbrir(true);
+    setErro(
+      `O conector está aberto (porta ${portaViva}), mas não aceitou este site. Duas causas possíveis: ` +
+        `(1) ele foi aberto para outro endereço -- na janela do conector, a linha "Site:" precisa ser exatamente ` +
+        `${origem}. Se for diferente, feche a janela, baixe de novo o abrir_conector.bat aqui embaixo (ele já vem ` +
+        `com este endereço) e abra o novo; a janela também mostra "RECUSADO" com o endereço certo. ` +
+        `(2) Se a linha "Site:" já estiver certa, o navegador bloqueou o acesso à rede local: clique no ícone à ` +
+        `esquerda do endereço do site, permita "Rede local" (ou "Dispositivos na rede local") e recarregue a página.`
+    );
   }
 
   async function executar() {
@@ -436,8 +493,16 @@ export function PostmanRm({
       {/* --- Conexão ---------------------------------------------------- */}
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1">
-          <span className={rotulo}>Porta</span>
-          <input value={porta} onChange={(e) => setPorta(e.target.value.replace(/\D/g, ""))} className={`${campo} w-20`} />
+          <span className={rotulo} title="A porta do conector na sua máquina (linha 'Porta:' da janela). Não é a porta do RM.">
+            Porta do conector
+          </span>
+          <input
+            value={porta}
+            onChange={(e) => setPorta(e.target.value.replace(/\D/g, ""))}
+            placeholder={PORTA_PADRAO}
+            title="A porta do conector na sua máquina (linha 'Porta:' da janela, padrão 8765). Não é a porta do RM."
+            className={`${campo} w-24`}
+          />
         </label>
         <label className="flex flex-col gap-1">
           <span className={rotulo}>Código de pareamento</span>
@@ -477,6 +542,11 @@ export function PostmanRm({
         <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">
           ✓ Conectado (conector {status.versao}) · base{status.bases.length > 1 ? "s" : ""}:{" "}
           {status.bases.map((b) => `${b.nome ? `${b.nome} = ` : ""}${b.rm}`).join(" · ")}
+        </p>
+      )}
+      {avisoConexao && (
+        <p className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+          {avisoConexao}
         </p>
       )}
       {conectorAntigo && (

@@ -56,7 +56,7 @@ from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-VERSAO = "1.2.0"
+VERSAO = "1.2.1"
 PORTA_PADRAO = 8765
 PREFIXOS_PERMITIDOS = ("/rmsrestdataserver/", "/api/")
 METODOS = ("GET", "POST", "PUT", "DELETE")
@@ -345,6 +345,8 @@ def _log(cfg: Config, texto: str) -> None:
 
 
 def criar_servidor(cfg: Config, porta: int = PORTA_PADRAO) -> ThreadingHTTPServer:
+    origens_avisadas: set = set()
+
     class Handler(BaseHTTPRequestHandler):
         server_version = f"ConectorRM/{VERSAO}"
 
@@ -353,7 +355,14 @@ def criar_servidor(cfg: Config, porta: int = PORTA_PADRAO) -> ThreadingHTTPServe
 
         def _origem_permitida(self) -> str | None:
             origem = self.headers.get("Origin")
-            return origem if origem and origem in cfg.origens else None
+            if origem and origem.rstrip("/") in cfg.origens:
+                return origem
+            if origem and origem not in origens_avisadas:  # avisa na janela uma vez por site
+                origens_avisadas.add(origem)
+                _log(cfg, f"RECUSADO: o site {origem} não está autorizado. Este conector foi aberto para: "
+                          f"{', '.join(cfg.origens)}. Baixe o atalho abrir_conector.bat pela tela de {origem} "
+                          "(ou apague conector_rm_config.json e abra de novo informando esse endereço).")
+            return None
 
         def _cors(self) -> None:
             origem = self._origem_permitida()
