@@ -310,7 +310,7 @@ def test_dois_cliques_pergunta_guarda_e_reaproveita(tmp_path, monkeypatch):
     monkeypatch.setattr("builtins.input", lambda _: next(respostas))
     argv = conector.perguntar_argumentos(arq)
     assert argv == ["--rm", "homolog=https://rm-hml:8051", "--rm", "producao=https://rm:8051",
-                    "--origem", conector.SITE_PADRAO, "--aceitar-certificado-autoassinado"]
+                    "--origem", conector.SITE_PADRAO, "--aceitar-certificado-autoassinado"]  # padrão: só o oficial
     # segunda vez: só confirma (Enter)
     monkeypatch.setattr("builtins.input", lambda _: "")
     assert conector.perguntar_argumentos(arq) == argv
@@ -334,3 +334,37 @@ def test_site_nao_autorizado_e_avisado_na_janela(ambiente):
     avisos = [l for l in cfg.log if "RECUSADO" in l]
     assert len(avisos) == 1  # uma vez por site, sem encher a janela
     assert "https://outro-site.vercel.app" in avisos[0] and ORIGEM in avisos[0]
+
+
+# --- 1.3: endereços de deploy da Vercel e /ping ---------------------------------------
+
+def test_origem_com_curinga_para_deploys_da_vercel():
+    lista = ("https://acelerador-rm.vercel.app", "https://acelerador-*-mateusroliveira-collab.vercel.app")
+    ok = conector.origem_autorizada
+    assert ok("https://acelerador-m2sap88pd-mateusroliveira-collab.vercel.app", lista)
+    assert ok("https://acelerador-git-melhorias-mateusroliveira-collab.vercel.app", lista)
+    assert ok("https://acelerador-rm.vercel.app/", lista)
+    assert not ok("https://acelerador-x.evil.com/-mateusroliveira-collab.vercel.app", lista)
+    assert not ok("https://acelerador-x.mateusroliveira-collab.vercel.app", lista)  # * não atravessa "."
+    assert not ok("https://acelerador-abc-outra-equipe.vercel.app", lista)
+    assert not ok("http://acelerador-abc-mateusroliveira-collab.vercel.app", lista)
+    assert not ok(None, lista)
+
+
+def test_ping_diz_se_o_site_e_aceito_sem_revelar_nada(ambiente):
+    _, base = ambiente
+    status, cab, r = _chamar(base, "/ping", token=None, origem="https://outro-site.vercel.app")
+    assert status == 200 and r == {"conector": True, "versao": conector.VERSAO, "origem_autorizada": False}
+    assert cab.get("Access-Control-Allow-Origin") == "https://outro-site.vercel.app"
+    _, _, r = _chamar(base, "/ping", token=None)
+    assert r["origem_autorizada"] is True
+
+
+def test_origens_do_site_inclui_padrao_dos_deploys():
+    assert conector.origens_do_site("https://acelerador-m2sap88pd-mateusroliveira-collab.vercel.app/") == [
+        "https://acelerador-m2sap88pd-mateusroliveira-collab.vercel.app",
+        "https://acelerador-*-mateusroliveira-collab.vercel.app",
+        conector.SITE_PADRAO,
+    ]
+    assert conector.origens_do_site(conector.SITE_PADRAO) == [conector.SITE_PADRAO]
+    assert conector.origens_do_site("http://localhost:3000") == ["http://localhost:3000", conector.SITE_PADRAO]

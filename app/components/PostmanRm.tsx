@@ -8,6 +8,7 @@ import {
   comandoConector,
   lerConexaoSalva,
   mensagemConectorInacessivel,
+  pingConector,
   salvarConexao,
   urlConector,
   versaoAtende,
@@ -299,12 +300,33 @@ export function PostmanRm({
   }
 
   async function diagnosticarFalhaDeConexao() {
+    setStatus(null);
+    const reabrir =
+      "Feche a janela do conector, baixe de novo os dois arquivos aqui embaixo (conector_rm.py e " +
+      "abrir_conector.bat -- o atalho já vem com o endereço deste site e dos próximos deploys) e abra o atalho novo.";
+
+    // Conector 1.3+: o /ping diz com certeza se é ele e se aceita este site.
+    for (const p of porta === PORTA_PADRAO ? [porta] : [porta, PORTA_PADRAO]) {
+      const ping = await pingConector(p);
+      if (!ping) continue;
+      if (p !== porta) setPorta(p);
+      setComoAbrir(true);
+      setErro(
+        ping.origem_autorizada
+          ? `O conector está aberto (porta ${p}) e aceita este site, mas o navegador barrou a conexão. Clique no ` +
+              "ícone à esquerda do endereço do site, permita \"Rede local\" (ou \"Dispositivos na rede local\") e " +
+              "recarregue a página. Se não houver essa opção, a política do navegador da empresa pode estar bloqueando."
+          : `O conector está aberto (porta ${p}), mas foi aberto para outro endereço de site, não para ${origem}. ${reabrir}`
+      );
+      return;
+    }
+
+    // Conector antigo (sem /ping) ou nada na porta.
     const portaViva = (await conectorResponde(porta))
       ? porta
       : porta !== PORTA_PADRAO && (await conectorResponde(PORTA_PADRAO))
         ? PORTA_PADRAO
         : null;
-    setStatus(null);
     if (!portaViva) {
       setErro(
         `${mensagemConectorInacessivel(porta)} Teste: abra ${urlConector(PORTA_PADRAO)}/status numa aba nova -- ` +
@@ -315,12 +337,9 @@ export function PostmanRm({
     if (portaViva !== porta) setPorta(portaViva);
     setComoAbrir(true);
     setErro(
-      `O conector está aberto (porta ${portaViva}), mas não aceitou este site. Duas causas possíveis: ` +
-        `(1) ele foi aberto para outro endereço -- na janela do conector, a linha "Site:" precisa ser exatamente ` +
-        `${origem}. Se for diferente, feche a janela, baixe de novo o abrir_conector.bat aqui embaixo (ele já vem ` +
-        `com este endereço) e abra o novo; a janela também mostra "RECUSADO" com o endereço certo. ` +
-        `(2) Se a linha "Site:" já estiver certa, o navegador bloqueou o acesso à rede local: clique no ícone à ` +
-        `esquerda do endereço do site, permita "Rede local" (ou "Dispositivos na rede local") e recarregue a página.`
+      `Algo responde na porta ${portaViva}, mas não aceitou este site. O mais provável é um conector antigo, ` +
+        `aberto para outro endereço (este site é ${origem}). ${reabrir} Se a porta ${portaViva} for a do RM, ` +
+        `use no campo a porta da linha "Porta:" da janela do conector (padrão ${PORTA_PADRAO}).`
     );
   }
 
@@ -908,8 +927,21 @@ export function PostmanRm({
           )}
           {previa && (
             <details>
-              <summary className="cursor-pointer text-muted">Ver como o primeiro registro vai ser enviado</summary>
+              <summary className="cursor-pointer text-muted">
+                Ver como o primeiro registro vai ser enviado (corpo para usar no Postman)
+              </summary>
+              <p className="mt-1 text-muted">
+                No Postman: um registro por chamada, só este corpo (sem &quot;messages&quot;/&quot;data&quot;, sem id, sem
+                null, sem SENHA). PUT vai em{" "}
+                <code>
+                  {raiz}/{chaveNaUrl(chaveDoRegistro(enviar[0]?.r ?? {}, campoChave) || "<chave>")}
+                </code>
+                .
+              </p>
               <pre className="mt-1 max-h-64 overflow-auto rounded-md border border-line bg-paper p-2 font-mono text-[11px]">{previa}</pre>
+              <button onClick={() => copiar(previa, "previa")} className={`${botaoSec} mt-1`}>
+                {copiado === "previa" ? "Copiado!" : "Copiar corpo"}
+              </button>
             </details>
           )}
         </div>

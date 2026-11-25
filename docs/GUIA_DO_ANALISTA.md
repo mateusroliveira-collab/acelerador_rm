@@ -180,6 +180,26 @@ erro nas linhas 6, 12 e 20).
 
 ---
 
+**No Postman (ou SOAP UI):** o corpo do POST/PUT é **um registro só**, sem `messages`/`data`, sem
+`id`, sem campos `null` e **sem `SENHA`** — o GET devolve a senha como `null` por segurança, e
+mandar `"SENHA": null` de volta num PUT tenta apagar a senha (coluna obrigatória) → 0007. Exemplo de
+PUT em `/rmsrestdataserver/rest/GlbUsuarioData/ana.silva`:
+```json
+{
+  "CODUSUARIO": "ana.silva",
+  "NOME": "Ana Paula Silva",
+  "CODACESSO": "Acesso01",
+  "STATUS": 1,
+  "DATAINICIO": "2026-11-25T00:00:00-03:00",
+  "IGNORARAUTENTICACAOLDAP": "F",
+  "EMAIL": "ana.silva@exemplo.com",
+  "OIDC_ENABLED": 0,
+  "OBRIGAALTERARSENHA": 1
+}
+```
+Na tela, *Opções de envio > Ver como o primeiro registro vai ser enviado > Copiar corpo* dá esse
+corpo pronto.
+
 ## 5. Evento Contábil Automático e o conector
 
 **Tela:** `/evento-contabil-automatico` (o endereço antigo `/conector-rm` leva para cá) · Um
@@ -245,7 +265,8 @@ inexistente na base ou campo obrigatório faltando).
 | Não encontrei o conector | Janela fechada, porta errada (ex.: a do RM, 8051, no campo "Porta do conector") ou permissão de rede local negada | Abra o conector; use a porta da linha "Porta:" da janela (padrão 8765); permita o acesso |
 | Código de pareamento inválido | Código digitado errado, ou `--novo-codigo` usado | Cole de novo (Ctrl+V logo depois de abrir o conector) |
 | Porta já está em uso | O conector já está aberto em outra janela | Use a janela que já está aberta, ou feche-a |
-| Origem não autorizada | Conector aberto sem `--origem` igual ao site | Feche e abra com o comando copiado da tela |
+| "Aberto para outro endereço de site" / Origem não autorizada | Conector aberto para outro endereço (ex.: o site oficial, e você está num endereço de deploy da Vercel `acelerador-xxxxxxxxx-...vercel.app`) | Baixe de novo os dois arquivos pela tela e abra o atalho novo: a partir do 1.3 ele aceita também os próximos deploys |
+| "Aceita este site, mas o navegador barrou" | Permissão de rede local negada no navegador | Ícone à esquerda do endereço → permitir "Rede local"; se não houver a opção, é política da empresa |
 | Base desconhecida | A base não foi aberta no conector | Reabra o conector com `--rm nome=endereço` para ela |
 | Certificado não confiável | RM com HTTPS autoassinado | Reabra com `--aceitar-certificado-autoassinado` |
 | RM recusou a conexão / não encontrei o endereço | Porta errada, serviço parado ou VPN desligada | Confira `--rm`, a VPN e o serviço do RM |

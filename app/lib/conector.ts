@@ -54,16 +54,47 @@ export function versaoAtende(versao: string, minima = VERSAO_MINIMA) {
   return true;
 }
 
+/** Site oficial: sempre autorizado no conector. */
+export const SITE_OFICIAL = "https://acelerador-rm.vercel.app";
+
+/**
+ * Origens que o conector deve aceitar para este site. Endereço de deploy da
+ * Vercel (projeto-<9 letras>-equipe.vercel.app) muda a cada deploy: autoriza
+ * também projeto-*-equipe.vercel.app, para o conector não parar de funcionar.
+ */
+export function origensDoSite(origem: string): string[] {
+  const o = origem.trim().replace(/\/+$/, "").toLowerCase();
+  const saida = o ? [o] : [];
+  const m = /^https:\/\/([a-z0-9-]+?)-[a-z0-9]{9}-([a-z0-9-]+)\.vercel\.app$/.exec(o);
+  if (m) saida.push(`https://${m[1]}-*-${m[2]}.vercel.app`);
+  if (!saida.includes(SITE_OFICIAL)) saida.push(SITE_OFICIAL);
+  return saida;
+}
+
+/** O que o /ping do conector (1.3+) responde: aceita qualquer site, não revela nada além disto. */
+export type PingConector = { conector: true; versao: string; origem_autorizada: boolean };
+
+export async function pingConector(porta: string): Promise<PingConector | null> {
+  try {
+    const r = await fetch(`${urlConector(porta)}/ping`, { cache: "no-store" });
+    const dados = await r.json();
+    return dados?.conector === true ? dados : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Comando para abrir o conector. `bases`: uma por linha, "nome=https://servidor:porta"
  * (ou só o endereço, se for uma base).
  */
 function argumentosConector(bases: string, origem: string, porta: string, autoassinado: boolean, aspas: boolean) {
-  const q = (v: string) => (aspas ? `"${v.replace(/"/g, "")}"` : v);
+  // Aspas sempre que houver * (o terminal expandiria o curinga).
+  const q = (v: string) => (aspas || v.includes("*") ? `"${v.replace(/"/g, "")}"` : v);
   const linhas = bases.split("\n").map((l) => l.trim()).filter(Boolean);
   const partes: string[] = [];
   for (const l of linhas.length ? linhas : ["https://SERVIDOR-RM:PORTA"]) partes.push(`--rm ${q(l)}`);
-  if (origem) partes.push(`--origem ${q(origem)}`);
+  for (const o of origem ? origensDoSite(origem) : []) partes.push(`--origem ${q(o)}`);
   if (porta && porta !== PORTA_PADRAO) partes.push(`--porta ${porta}`);
   if (autoassinado) partes.push("--aceitar-certificado-autoassinado");
   return partes.join(" ");

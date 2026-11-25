@@ -11,7 +11,9 @@ Segurança:
   - escuta só em 127.0.0.1 (nada de fora da máquina consegue falar com ele);
   - exige o CÓDIGO DE PAREAMENTO mostrado ao abrir (outro site aberto no
     navegador não consegue usá-lo);
-  - só aceita chamadas do navegador vindas das origens informadas (--origem);
+  - só aceita chamadas do navegador vindas das origens informadas (--origem;
+    aceita * dentro de um nome, para os endereços de deploy da Vercel, ex.:
+    https://acelerador-*-minha-equipe.vercel.app);
   - só chama os endereços de RM informados ao abrir (--rm, uma ou mais
     bases com nome) e só nos caminhos permitidos (/rmsrestdataserver/ e
     /api/): não é um proxy aberto;
@@ -56,7 +58,7 @@ from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-VERSAO = "1.2.1"
+VERSAO = "1.3.0"
 PORTA_PADRAO = 8765
 PREFIXOS_PERMITIDOS = ("/rmsrestdataserver/", "/api/")
 METODOS = ("GET", "POST", "PUT", "DELETE")
@@ -110,6 +112,44 @@ class ErroConector(Exception):
 
 
 # --- Validação de entrada -----------------------------------------------------
+
+
+def _casa_curinga(valor: str, padrao: str) -> bool:
+    """'*' casa letras, números e '-' (nunca '.', '/' ou ':'): fica dentro de um nome do endereço."""
+    import re
+
+    partes = [re.escape(p) for p in padrao.split("*")]
+    return re.fullmatch("[a-z0-9-]+".join(partes), valor) is not None
+
+
+def origens_do_site(endereco: str) -> list[str]:
+    """
+    Endereço do site -> origens a autorizar. Endereço de deploy da Vercel
+    (projeto-<9 letras>-equipe.vercel.app) muda a cada deploy: autoriza também
+    projeto-*-equipe.vercel.app. Sempre inclui o site oficial.
+    """
+    import re
+
+    endereco = endereco.strip().rstrip("/").lower()
+    saida = [endereco] if endereco else []
+    m = re.fullmatch(r"https://([a-z0-9-]+?)-[a-z0-9]{9}-([a-z0-9-]+)\.vercel\.app", endereco)
+    if m:
+        saida.append(f"https://{m.group(1)}-*-{m.group(2)}.vercel.app")
+    if SITE_PADRAO not in saida:
+        saida.append(SITE_PADRAO)
+    return saida
+
+
+def origem_autorizada(origem: str | None, origens: tuple[str, ...]) -> bool:
+    """Origem (ex.: https://site.vercel.app) está na lista? Aceita * nos endereços da lista."""
+    if not origem:
+        return False
+    origem = origem.rstrip("/").lower()
+    for o in origens:
+        o = o.rstrip("/").lower()
+        if origem == o or ("*" in o and _casa_curinga(origem, o)):
+            return True
+    return False
 
 
 def normalizar_rm(url: str) -> str:
@@ -355,7 +395,7 @@ def criar_servidor(cfg: Config, porta: int = PORTA_PADRAO) -> ThreadingHTTPServe
 
         def _origem_permitida(self) -> str | None:
             origem = self.headers.get("Origin")
-            if origem and origem.rstrip("/") in cfg.origens:
+            if origem_autorizada(origem, cfg.origens):
                 return origem
             if origem and origem not in origens_avisadas:  # avisa na janela uma vez por site
                 origens_avisadas.add(origem)
@@ -406,8 +446,30 @@ def criar_servidor(cfg: Config, porta: int = PORTA_PADRAO) -> ThreadingHTTPServe
             self.send_header("Content-Length", "0")
             self.end_headers()
 
+        def _ping(self) -> None:
+            """
+            Diagnóstico para a tela: responde a qualquer site (sem código) só
+            "sou o conector, versão X, e aceito/não aceito o seu endereço". Não
+            revela bases, endereços autorizados nem o código.
+            """
+            origem = self.headers.get("Origin")
+            corpo = json.dumps({"conector": True, "versao": VERSAO,
+                                "origem_autorizada": bool(self._origem_permitida())}).encode("utf-8")
+            self.send_response(200)
+            if origem:
+                self.send_header("Access-Control-Allow-Origin", origem)
+                self.send_header("Vary", "Origin")
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(corpo)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(corpo)
+
         def do_GET(self):  # noqa: N802
-            if self.path.split("?")[0] != "/status":
+            rota = self.path.split("?")[0]
+            if rota == "/ping":
+                return self._ping()
+            if rota != "/status":
                 return self._responder(404, {"ok": False, "erro": "Rota inexistente."})
             if not self._checar_acesso():
                 return
@@ -540,7 +602,7 @@ def perguntar_argumentos(arquivo: Path | None = None) -> list[str]:
         bases.append(b)
     origem = _perguntar("Endereço do site do Acelerador", (dados.get("origem") or [SITE_PADRAO])[0])
     autoassinado = _perguntar("O RM usa certificado HTTPS próprio (autoassinado)? (s/N)", "N").lower().startswith("s")
-    dados = {**dados, "bases": bases, "origem": [origem.rstrip("/")], "autoassinado": autoassinado}
+    dados = {**dados, "bases": bases, "origem": origens_do_site(origem), "autoassinado": autoassinado}
     salvar_config(dados, arquivo)
     print(f"\nConfiguração guardada em {(arquivo or ARQUIVO_CONFIG).name} (na próxima vez é só dar dois cliques).\n")
     return _argumentos(dados)
